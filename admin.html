@@ -50,7 +50,7 @@ const TYPES=['Engraving','Monogram Emboss','Foil Stamp','No personalisation'],CH
 const DEF1='https://script.google.com/macros/s/AKfycby8IqyOK3DpAMI5SjI8_qmT_sDPOotzT-1l-0czE7XcNMd4edW9DHdrST-id8624tqFcw/exec';
 // Leave blank while testing. Add the kiosk/event sheet /exec URL later.
 const DEF2='https://script.google.com/macros/s/AKfycbxwZVXoH9BrYz1qFSavv3rl-sdJIP9RjPXo9n8XZjSYpaaLAb2ukdEhitY-Eu8bCR0C/exec';
-let URL_=LS.rtlh_url||DEF1,URL2=LS.rtlh_url2||DEF2,src='all',D=JSON.parse(LS.rtlh_data||'{"orders":[],"expenses":[],"ev":[]}'),tab='ov',range=30,ls='q',sel=null,q='',edit=null,as='o',busy=false;
+let URL_=LS.rtlh_url||DEF1,URL2=LS.rtlh_url2||DEF2,src='all',D=JSON.parse(LS.rtlh_data||'{"orders":[],"expenses":[],"ev":[]}'),tab='ov',range=0,ls='q',sel=null,q='',edit=null,as='o',busy=false;
 const AO=()=>src=='direct'?D.orders:src=='event'?(D.ev||[]):D.orders.concat(D.ev||[]);
 const evRow=(r,i)=>{const m=String(r[0]).match(/^(\d\d)\/(\d\d)\/(\d{4})/),d=m?`${m[3]}-${m[2]}-${m[1]}`:/^\d{4}-\d\d-\d\d/.test(r[0])?String(r[0]).slice(0,10):null;if(!d||r[1]==='TEST')return null;const p=PR[r[4]];
  return{id:i,date:d,customer:r[3],product:r[4],color:r[5]==='N/A'?'':r[5],type:r[6],text:r[7]==='—'?'':r[7],price:(p?p[0]:0)+({'Monogram Emboss':15,'Foil Stamp':20}[r[6]]||0),channel:'Event: '+(r[1]||'—'),est:1}};

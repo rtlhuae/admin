@@ -46,8 +46,11 @@ input,select,textarea{width:100%;font:inherit;font-size:16px;padding:14px;border
 const $=s=>document.querySelector(s),LS=localStorage;
 const PR={'The Voyage Tag':[120,'Blue,Brown,Pink,Red,White'],'The Heartpiece':[85,'Black,Blue,Brown,Green,Navy,Pink,Red'],'The Heart Mirror':[110,'Blue,Pink,Red,White'],'The Foldable Mirror':[95,'Brown,Green,Pink'],'The Necklace':[195,''],'RTLH Card Holder':[150,'Black,Burgundy,Gray,Navy'],'The Cardholder':[150,'Beige,Blue,Pink'],'MagSafe':[135,'Berry,Black,Crimson,Desert Gold,Gray,Green,Lavender,Lemon,Light Blue,Light Brown,Light Pink,Navy,Orange,Pink,Purple,Red,Rose Gold,Silver,White,Yellow'],'Gua Sha':[95,'']};
 const TYPES=['Engraving','Monogram Emboss','Foil Stamp','No personalisation'],CH=['Event','Direct','Instagram','WhatsApp','Other'],CAT=['Materials','Marketing','Event fees','Equipment','Shipping','Other'];
-const DEF1='https://script.google.com/macros/s/AKfycbyremL2uWXmRzdK1ovYhttGSwik4CrBs7HA8fItwdWyYhkF82K6d59aZmFSNxUoW1PZ8A/exec',DEF2='https://script.google.com/macros/s/AKfycbxwZVXoH9BrYz1qFSavv3rl-sdJIP9RjPXo9n8XZjSYpaaLAb2ukdEhitY-Eu8bCR0C/exec';
-let URL_=LS.rtlh_url||DEF1,URL2=LS.rtlh_url2||DEF2,src='all',D=JSON.parse(LS.rtlh_data||'{"orders":[],"expenses":[]}'),tab='ov',range=30,ls='q',sel=null,q='',edit=null,as='o',busy=false;
+// Admin sheet URL. Replace with your NEW Google Apps Script /exec URL if needed.
+const DEF1='https://script.google.com/macros/s/AKfycby8IqyOK3DpAMI5SjI8_qmT_sDPOotzT-1l-0czE7XcNMd4edW9DHdrST-id8624tqFcw/exec';
+// Leave blank while testing. Add the kiosk/event sheet /exec URL later.
+const DEF2='https://script.google.com/macros/s/AKfycbxwZVXoH9BrYz1qFSavv3rl-sdJIP9RjPXo9n8XZjSYpaaLAb2ukdEhitY-Eu8bCR0C/exec';
+let URL_=LS.rtlh_url||DEF1,URL2=LS.rtlh_url2||DEF2,src='all',D=JSON.parse(LS.rtlh_data||'{"orders":[],"expenses":[],"ev":[]}'),tab='ov',range=30,ls='q',sel=null,q='',edit=null,as='o',busy=false;
 const AO=()=>src=='direct'?D.orders:src=='event'?(D.ev||[]):D.orders.concat(D.ev||[]);
 const evRow=(r,i)=>{const m=String(r[0]).match(/^(\d\d)\/(\d\d)\/(\d{4})/),d=m?`${m[3]}-${m[2]}-${m[1]}`:/^\d{4}-\d\d-\d\d/.test(r[0])?String(r[0]).slice(0,10):null;if(!d||r[1]==='TEST')return null;const p=PR[r[4]];
  return{id:i,date:d,customer:r[3],product:r[4],color:r[5]==='N/A'?'':r[5],type:r[6],text:r[7]==='—'?'':r[7],price:(p?p[0]:0)+({'Monogram Emboss':15,'Foil Stamp':20}[r[6]]||0),channel:'Event: '+(r[1]||'—'),est:1}};
@@ -59,19 +62,103 @@ const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Dubai'});
 const day=s=>String(s).slice(0,10),num=v=>parseFloat(v)||0;
 const cut=()=>{if(!range)return'';const d=new Date();d.setDate(d.getDate()-range);return d.toLocaleDateString('en-CA')};
 const inR=r=>day(r.date)>=cut();
+async function apiPost(payload){
+  if(!URL_)throw new Error('No Admin sheet URL configured');
+
+  const res=await fetch(URL_,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(payload),
+    redirect:'follow'
+  });
+
+  const text=await res.text();
+
+  if(!res.ok)throw new Error('Admin sheet HTTP '+res.status);
+
+  if(String(text).trim()==='OK')return {ok:true};
+
+  try{
+    const j=JSON.parse(text);
+    if(j.ok===false)throw new Error(j.error||'Apps Script error');
+    return j;
+  }catch(err){
+    console.error('POST response:',text);
+    throw new Error('Invalid response from Admin sheet');
+  }
+}
+
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200)}
 function setLive(c,t){$('#live').className=c;$('#lt').textContent=t}
 async function load(manual){
- if(!URL_&&!URL2){setLive('err','Not connected');return render()}
- if(busy)return;busy=true;setLive('','Syncing…');
- try{
-  if(URL_){const j=await(await fetch(URL_,{cache:'no-store'})).json();D.orders=j.orders||[];D.expenses=j.expenses||[]}
-  if(URL2){const v=await(await fetch(URL2,{cache:'no-store'})).json();D.ev=v.map(evRow).filter(Boolean)}
-  LS.rtlh_data=JSON.stringify(D);
-  setLive('ok','Live · '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));if(manual)toast('Updated');
-  if(!document.activeElement||!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))render()}
- catch(e){setLive('err','Offline · cached');if(manual)toast('Could not reach a sheet')}
- busy=false}
+  if(!URL_&&!URL2){
+    setLive('err','Not connected');
+    return render();
+  }
+
+  if(busy)return;
+  busy=true;
+  setLive('','Syncing…');
+
+  try{
+    if(URL_){
+      const res=await fetch(URL_,{method:'GET',cache:'no-store',redirect:'follow'});
+      const text=await res.text();
+
+      if(!res.ok) throw new Error('Admin sheet HTTP '+res.status);
+
+      let j;
+      try{j=JSON.parse(text)}
+      catch(err){
+        console.error('Admin sheet returned:',text);
+        throw new Error('Admin sheet did not return JSON');
+      }
+
+      if(j.ok===false) throw new Error(j.error||'Admin Apps Script error');
+
+      D.orders=j.orders||[];
+      D.expenses=j.expenses||[];
+    }
+
+    if(URL2){
+      const res=await fetch(URL2,{method:'GET',cache:'no-store',redirect:'follow'});
+      const text=await res.text();
+
+      if(!res.ok) throw new Error('Event sheet HTTP '+res.status);
+
+      let v;
+      try{v=JSON.parse(text)}
+      catch(err){
+        console.error('Event sheet returned:',text);
+        throw new Error('Event sheet did not return JSON');
+      }
+
+      D.ev=v.map(evRow).filter(Boolean);
+    }else{
+      D.ev=[];
+    }
+
+    LS.rtlh_data=JSON.stringify(D);
+
+    setLive('ok','Live · '+new Date().toLocaleTimeString('en-GB',{
+      hour:'2-digit',
+      minute:'2-digit'
+    }));
+
+    if(manual)toast('Updated');
+
+    if(!document.activeElement||!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))render();
+
+  }catch(e){
+    console.error('RTLH Sheets connection error:',e);
+    setLive('err','Offline · cached');
+
+    if(manual)toast('Could not reach sheet: '+(e.message||'Connection failed'));
+  }finally{
+    busy=false;
+  }
+}
+
 function tally(rows,key){const m={};rows.forEach(r=>{const k=r[key]||'—';if(k==='—'||k==='N/A')return;m[k]=m[k]||{n:0,rev:0};m[k].n++;m[k].rev+=num(r.price)});return Object.entries(m).sort((a,b)=>b[1].n-a[1].n||b[1].rev-a[1].rev)}
 function hbars(list,max=5){if(!list.length)return'<div class="empty" style="padding:14px">No data yet</div>';const top=list[0][1].n;
  return list.slice(0,max).map(([k,v])=>`<div class="hb"><div class="t">${esc(k)}<span>${v.n} · ${AED(v.rev)}</span></div><div class="tr"><i style="width:${v.n/top*100}%"></i></div></div>`).join('')}
@@ -107,13 +194,13 @@ function lstHtml(){const P=D.orders.filter(r=>!r.done),F=D.orders.filter(r=>r.do
  return L.length?L.map(row).join(''):`<div class="empty">${t?'No matches.':ls=='q'?'All caught up ✓':'Nothing here yet.'}</div>`}
 function startEdit(kind,id){const rec=(kind=='order'?D.orders:D.expenses).find(x=>String(x.id)==String(id));if(!rec)return;edit={kind,id,rec:{...rec}};as=kind=='order'?'o':'e';tab='add';render();$('#main').scrollTop=0}
 async function del(kind,id){if(!confirm('Delete this entry? This cannot be undone.'))return;const k=kind=='order'?'orders':'expenses';D[k]=D[k].filter(x=>String(x.id)!=String(id));sel=null;LS.rtlh_data=JSON.stringify(D);render();
- try{await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'delete_'+kind,id})});toast('Deleted')}catch(e){toast('Could not reach the sheet')}
+ try{await apiPost({action:'delete_'+kind,id});toast('Deleted')}catch(e){toast('Could not reach the sheet: '+e.message)}
  setTimeout(()=>load(),2500)}
 async function mark(id,fulfil){const r=D.orders.find(x=>String(x.id)==String(id));if(!r)return;r.done=fulfil;sel=null;LS.rtlh_data=JSON.stringify(D);render();
- try{await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:fulfil?'fulfill':'reopen',id})});toast(fulfil?'Fulfilled ✓':'Moved back to queue')}catch(e){toast('Could not reach the sheet')}
+ try{await apiPost({action:fulfil?'fulfill':'reopen',id});toast(fulfil?'Fulfilled ✓':'Moved back to queue')}catch(e){toast('Could not reach the sheet: '+e.message)}
  setTimeout(()=>load(),2500)}
 async function settle(id,v){const r=D.expenses.find(x=>String(x.id)==String(id));if(!r)return;r.settled=v;sel=null;LS.rtlh_data=JSON.stringify(D);render();
- try{await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:v?'settle':'unsettle',id})});toast(v?'Settled ✓':'Marked pending')}catch(e){toast('Could not reach the sheet')}
+ try{await apiPost({action:v?'settle':'unsettle',id});toast(v?'Settled ✓':'Marked pending')}catch(e){toast('Could not reach the sheet: '+e.message)}
  setTimeout(()=>load(),2500)}
 const opt=a=>a.map(x=>`<option>${x}</option>`).join(''),optS=(a,v)=>a.map(x=>`<option${x==v?' selected':''}>${x}</option>`).join('');
 function add(){const E=edit?edit.rec:null,v=k=>esc(E&&E[k]!=null?E[k]:''),dt=E?day(E.date):today();
@@ -133,10 +220,10 @@ async function submit(kind){const g=id=>($('#f_'+id)||{}).value||'';let d;
  const arr=kind=='order'?D.orders:D.expenses;
  if(edit){d.id=edit.id;d.action=kind=='order'?'update_order':'update_expense';const rc=arr.find(x=>String(x.id)==String(edit.id));if(rc)Object.assign(rc,{...d,action:undefined})}else{d.id=Date.now();arr.push(d)}
  LS.rtlh_data=JSON.stringify(D);
- try{await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(d)});toast('Saved ✓')}catch(e){toast('Saved locally — send failed')}
+ try{await apiPost(d);toast('Saved ✓')}catch(e){toast('Saved locally — send failed: '+e.message)}
  tab='ord';ls=kind=='order'?(edit&&edit.rec.done?'d':'q'):'e';edit=null;render();setTimeout(()=>load(),2500)}
 function set(){return`<h2>Settings</h2><label>Sales sheet URL (individual sales, expenses)</label><input id="url" value="${esc(URL_)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><label>Event sheet URL (kiosk orders)</label><input id="url2" value="${esc(URL2)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><div class="btn" onclick="saveUrl()">Save &amp; connect</div><div class="btn g" onclick="load(true)">Refresh now</div>
-<div class="empty" style="text-align:left">Use a <b>new</b> Google Sheet for this app, not the event sheet. Event orders come from the kiosk's sheet; their prices are estimated from the price list since the kiosk doesn't record prices.<br><br>Data refreshes every 30 seconds while the app is open.</div>`}
+<div class="empty" style="text-align:left">Use a <b>new</b> Google Sheet for this app, not the event sheet. Event orders come from the kiosk's sheet; their prices are estimated from the price list since the kiosk doesn't record prices.<br><br>The event sheet URL can be left blank while testing. Data refreshes every 30 seconds while the app is open.</div>`}
 function saveUrl(){URL_=$('#url').value.trim();LS.rtlh_url=URL_;URL2=$('#url2').value.trim();LS.rtlh_url2=URL2;toast('Saved');load(true)}
 const TABS=[['ov','◈','Stats'],['ord','☰','Orders'],['add','+','Add'],['set','⚙','Settings']],V={ov,ord,add,set};
 function render(){const m=$('#main'),sc=m.scrollTop;m.innerHTML=V[tab]();if(tab=='add')fillCl();m.scrollTop=sc;

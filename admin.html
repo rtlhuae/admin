@@ -45,12 +45,12 @@ input,select,textarea{width:100%;font:inherit;font-size:16px;padding:14px;border
 <script>
 const $=s=>document.querySelector(s),LS=localStorage;
 const PR={'The Voyage Tag':[120,'Blue,Brown,Pink,Red,White'],'The Heartpiece':[85,'Black,Blue,Brown,Green,Navy,Pink,Red'],'The Heart Mirror':[110,'Blue,Pink,Red,White'],'The Foldable Mirror':[95,'Brown,Green,Pink'],'The Necklace':[195,''],'RTLH Card Holder':[150,'Black,Burgundy,Gray,Navy'],'The Cardholder':[150,'Beige,Blue,Pink'],'MagSafe':[135,'Berry,Black,Crimson,Desert Gold,Gray,Green,Lavender,Lemon,Light Blue,Light Brown,Light Pink,Navy,Orange,Pink,Purple,Red,Rose Gold,Silver,White,Yellow'],'Gua Sha':[95,'']};
-const TYPES=['Engraving','Monogram Emboss','Foil Stamp','No personalisation'],CH=['Event','Direct','Instagram','WhatsApp','Other'],CAT=['Materials','Marketing','Event fees','Equipment','Shipping','Other'];
+const TYPES=['Engraving','Picture engraving','Monogram Emboss','Foil Stamp','No personalisation'],CH=['Event','Direct','Instagram','WhatsApp','Other'],CAT=['Materials','Marketing','Event fees','Equipment','Shipping','Other'];
 // Admin sheet URL. Replace with your NEW Google Apps Script /exec URL if needed.
 const DEF1='https://script.google.com/macros/s/AKfycby8IqyOK3DpAMI5SjI8_qmT_sDPOotzT-1l-0czE7XcNMd4edW9DHdrST-id8624tqFcw/exec';
 // Leave blank while testing. Add the kiosk/event sheet /exec URL later.
 const DEF2='https://script.google.com/macros/s/AKfycbxwZVXoH9BrYz1qFSavv3rl-sdJIP9RjPXo9n8XZjSYpaaLAb2ukdEhitY-Eu8bCR0C/exec';
-let URL_=LS.rtlh_url||DEF1,URL2=LS.rtlh_url2||DEF2,src='all',D=JSON.parse(LS.rtlh_data||'{"orders":[],"expenses":[],"ev":[]}'),tab='ov',range=0,ls='q',sel=null,q='',edit=null,as='o',busy=false;
+let URL_=LS.rtlh_url||DEF1,URL2=LS.rtlh_url2||DEF2,URL3=LS.rtlh_url3||'',KEY3=LS.rtlh_key3||'',src='all',D=JSON.parse(LS.rtlh_data||'{"orders":[],"expenses":[],"ev":[],"web":[]}'),tab='ov',range=0,ls='q',sel=null,q='',edit=null,as='o',busy=false;
 const AO=()=>src=='direct'?D.orders:src=='event'?(D.ev||[]):D.orders.concat(D.ev||[]);
 const evRow=(r,i)=>{const m=String(r[0]).match(/^(\d\d)\/(\d\d)\/(\d{4})/),d=m?`${m[3]}-${m[2]}-${m[1]}`:/^\d{4}-\d\d-\d\d/.test(r[0])?String(r[0]).slice(0,10):null;if(!d||r[1]==='TEST')return null;const p=PR[r[4]];
  return{id:i,date:d,customer:r[3],product:r[4],color:r[5]==='N/A'?'':r[5],type:r[6],text:r[7]==='—'?'':r[7],price:0,channel:'Event: '+(r[1]||'—')}};
@@ -138,6 +138,13 @@ async function load(manual){
       D.ev=[];
     }
 
+    if(URL3&&KEY3){
+      const res=await fetch(URL3+'?action=admin_list&key='+encodeURIComponent(KEY3),{method:'GET',cache:'no-store',redirect:'follow'});
+      const w=JSON.parse(await res.text());
+      if(w.ok===false) throw new Error('Website sheet: '+(w.error||'error'));
+      D.web=w.orders||[];D.webTest=!!w.test;
+    }else{D.web=[];}
+
     LS.rtlh_data=JSON.stringify(D);
 
     setLive('ok','Live · '+new Date().toLocaleTimeString('en-GB',{
@@ -159,6 +166,21 @@ async function load(manual){
   }
 }
 
+const W=()=>D.web||[],wNew=()=>W().filter(o=>(o.Status=='paid'||o.Status=='received')&&!o.Fulfilled);
+const WS={paid:['Paid','var(--ok)'],received:['Pay on WhatsApp','var(--gold)'],awaiting_payment:['Awaiting payment','var(--wg)'],failed:['Failed','var(--bad)'],cancelled:['Cancelled','var(--wg)'],abandoned:['Abandoned','var(--wg)'],amount_mismatch:['CHECK amount','var(--bad)'],payment_error:['Payment error','var(--bad)']};
+const wa=p=>'https://wa.me/'+String(p).replace(/\D/g,'').replace(/^0/,'971');
+function webHtml(t){if(!URL3||!KEY3)return'<div class="empty">Connect your website orders in Settings to see them here.</div>';
+ let L=W().filter(o=>['paid','received','amount_mismatch'].includes(o.Status)||t);if(t)L=L.filter(o=>Object.values(o).join(' ').toLowerCase().includes(t));
+ if(!L.length)return'<div class="empty">'+(t?'No matches.':'No website orders yet.')+'</div>';
+ return L.map(o=>{const id=esc(o['Order ID']),st=WS[o.Status]||[o.Status,'var(--wg)'],done=!!o.Fulfilled,open=sel==o['Order ID'];
+  const first=String(o.Items||'').split('\n')[0];
+  const head=`<div class="li" onclick="sel=sel=='${id}'?null:'${id}';lst()"><div><b>${esc(o.Name)}${o.Test?' <span style="color:var(--bad);font-size:11px">TEST</span>':''}</b><small>${id} · ${day(o.Created)} · <span style="color:${done?'var(--ok)':st[1]}">${done?'Fulfilled ✓':st[0]}</span></small><small>${esc(first)}</small></div><div class="a">${AED(num(o.Total))}</div></div>`;
+  if(!open)return head;
+  const photos=o.Photos?String(o.Photos).split('\n').filter(String).map((u,i)=>'<a href="'+esc(u)+'" target="_blank" style="color:var(--gold);display:block">Open photo '+(i+1)+' ↗</a>').join(''):'';
+  return head+`<div class="card" style="margin:8px 0 14px;font-size:14px;line-height:1.6"><div style="white-space:pre-line;margin-bottom:10px">${esc(o.Items)}</div><div><b>${esc(o.Name)}</b> · <a href="${wa(o.Phone)}" style="color:var(--gold)">${esc(o.Phone)}</a>${o.Email?' · '+esc(o.Email):''}</div><div>${o.Method=='pickup'?'Pick up':esc([o.Address,o.Area,o.Emirate].filter(String).join(', '))}</div>${o['Gift note']?'<div>Gift note: <i>'+esc(o['Gift note'])+'</i></div>':''}${o.Notes?'<div>Notes: '+esc(o.Notes)+'</div>':''}${photos}<div style="color:var(--wg);font-size:12px;margin-top:6px">Subtotal ${AED(num(o.Subtotal))} · Delivery ${AED(num(o.Delivery))}${o['Paid at']?' · Paid '+String(o['Paid at']).slice(0,16).replace('T',' '):''}</div></div><div class="acts"><div class="btn" style="${done?'':'background:var(--ok)'}" onclick="webDone('${id}',${!done})">${done?'Re-open':'Fulfilled ✓'}</div><a class="btn g" href="${wa(o.Phone)}">WhatsApp</a></div>`}).join('')}
+async function webDone(id,v){const o=W().find(x=>x['Order ID']==id);if(!o)return;o.Fulfilled=v?new Date().toISOString():'';sel=null;LS.rtlh_data=JSON.stringify(D);render();
+ try{const r=await fetch(URL3,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'admin_fulfil',key:KEY3,order:id,done:v}),redirect:'follow'});const j=JSON.parse(await r.text());if(!j.ok)throw new Error(j.error);toast(v?'Fulfilled ✓':'Re-opened')}catch(e){toast('Could not reach website sheet: '+e.message)}
+ setTimeout(()=>load(),2500)}
 function tally(rows,key){const m={};rows.forEach(r=>{const k=r[key]||'—';if(k==='—'||k==='N/A')return;m[k]=m[k]||{n:0,rev:0};m[k].n++;m[k].rev+=num(r.price)});return Object.entries(m).sort((a,b)=>b[1].n-a[1].n||b[1].rev-a[1].rev)}
 function hbars(list,max=5){if(!list.length)return'<div class="empty" style="padding:14px">No data yet</div>';const top=list[0][1].n;
  return list.slice(0,max).map(([k,v])=>`<div class="hb"><div class="t">${esc(k)}<span>${v.n} · ${AED(v.rev)}</span></div><div class="tr"><i style="width:${v.n/top*100}%"></i></div></div>`).join('')}
@@ -166,7 +188,7 @@ function ov(){const o=AO().filter(inR),e=D.expenses.filter(inR),rev=o.reduce((a,
  const days=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return d.toLocaleDateString('en-CA')}),dv=days.map(d=>AO().filter(r=>day(r.date)==d).reduce((a,r)=>a+num(r.price),0)),mx=Math.max(...dv,1);
  const ec={};e.forEach(r=>ec[r.category]=(ec[r.category]||0)+num(r.amount));
  const best=tally(o,'product')[0],bc=tally(o,'color')[0];
- return`<h2>Overview</h2>${bal()?`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between" onclick="tab='ord';ls='e';render()"><span>${bal()}</span><b style="color:var(--gold)">View →</b></div>`:''}${D.orders.some(r=>!r.done)?`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between" onclick="tab='ord';ls='q';render()"><span>${D.orders.filter(r=>!r.done).length} to fulfill</span><b style="color:var(--gold)">View →</b></div>`:''}<div class="chips">${[[7,'7D'],[30,'30D'],[90,'90D'],[0,'All']].map(([v,l])=>`<div class="${range==v?'on':''}" onclick="range=${v};render()">${l}</div>`).join('')}</div>
+ return`<h2>Overview</h2>${wNew().length?`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;border-color:var(--gold)" onclick="tab='ord';ls='w';render()"><span>🌐 ${wNew().length} website order${wNew().length>1?'s':''} to send</span><b style="color:var(--gold)">View →</b></div>`:''}${bal()?`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between" onclick="tab='ord';ls='e';render()"><span>${bal()}</span><b style="color:var(--gold)">View →</b></div>`:''}${D.orders.some(r=>!r.done)?`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between" onclick="tab='ord';ls='q';render()"><span>${D.orders.filter(r=>!r.done).length} to fulfill</span><b style="color:var(--gold)">View →</b></div>`:''}<div class="chips">${[[7,'7D'],[30,'30D'],[90,'90D'],[0,'All']].map(([v,l])=>`<div class="${range==v?'on':''}" onclick="range=${v};render()">${l}</div>`).join('')}</div>
 <div class="chips">${[['all','All sales'],['direct','Individual'],['event','Events']].map(([v,l])=>`<div class="${src==v?'on':''}" onclick="src='${v}';render()">${l}</div>`).join('')}</div>
 <div class="kp"><div class="k w"><small>Profit</small><b class="${pf>=0?'pos':'neg'}">${AED(pf)}</b></div>
 <div class="k"><small>Revenue</small><b>${AED(rev)}</b></div><div class="k"><small>Spent</small><b>${AED(sp)}</b></div>
@@ -177,10 +199,10 @@ function ov(){const o=AO().filter(inR),e=D.expenses.filter(inR),rev=o.reduce((a,
 <h3>Personalisation</h3><div class="card">${hbars(tally(o,'type'))}</div><h3>Events</h3><div class="card">${hbars(tally(o,'channel'))}</div>
 <h3>Spending by category</h3><div class="card">${Object.keys(ec).length?Object.entries(ec).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hb"><div class="t">${esc(k)}<span>${AED(v)}</span></div><div class="tr"><i style="width:${v/sp*100}%"></i></div></div>`).join(''):'<div class="empty" style="padding:14px">No expenses yet</div>'}</div>`}
 function ord(){const P=D.orders.filter(r=>!r.done);
- const seg=`<div class="seg">${[['q','To do ('+P.length+')'],['d','Done'],['v','Events'],['e','Expenses']].map(([k,l])=>`<div class="${ls==k?'on':''}" style="font-size:12px" onclick="ls='${k}';sel=null;render()">${l}</div>`).join('')}</div>`;
- return`<h2>${{q:'To do',d:'Fulfilled',v:'Event orders',e:'Expenses'}[ls]}</h2>${seg}${ls=='e'&&bal()?`<div class="card" style="margin-bottom:12px"><b>${bal()}</b></div>`:''}<input id="sq" type="search" placeholder="Search name, product, text…" value="${esc(q)}" oninput="q=this.value;lst()" style="margin-bottom:6px"><div id="lst">${lstHtml()}</div>`}
+ const seg=`<div class="seg">${[['q','To do ('+P.length+')'],['w','Web'+(wNew().length?' ('+wNew().length+')':'')],['d','Done'],['v','Events'],['e','Expenses']].map(([k,l])=>`<div class="${ls==k?'on':''}" style="font-size:12px" onclick="ls='${k}';sel=null;render()">${l}</div>`).join('')}</div>`;
+ return`<h2>${{q:'To do',w:'Website orders',d:'Fulfilled',v:'Event orders',e:'Expenses'}[ls]}</h2>${seg}${ls=='e'&&bal()?`<div class="card" style="margin-bottom:12px"><b>${bal()}</b></div>`:''}<input id="sq" type="search" placeholder="Search name, product, text…" value="${esc(q)}" oninput="q=this.value;lst()" style="margin-bottom:6px"><div id="lst">${lstHtml()}</div>`}
 function lst(){$('#lst').innerHTML=lstHtml()}
-function lstHtml(){const P=D.orders.filter(r=>!r.done),F=D.orders.filter(r=>r.done),t=q.trim().toLowerCase();
+function lstHtml(){const P=D.orders.filter(r=>!r.done),F=D.orders.filter(r=>r.done),t=q.trim().toLowerCase();if(ls=='w')return webHtml(t);
  const srt=(a,asc)=>a.slice().sort((x,y)=>(asc?1:-1)*(day(x.date).localeCompare(day(y.date))||num(x.id)-num(y.id)));
  let L=ls=='q'?srt(P,1):ls=='d'?srt(F,0):ls=='v'?srt(D.ev||[],0):srt(D.expenses,0);
  if(t)L=L.filter(r=>Object.values(r).join(' ').toLowerCase().includes(t));L=L.slice(0,200);
@@ -222,9 +244,9 @@ async function submit(kind){const g=id=>($('#f_'+id)||{}).value||'';let d;
  LS.rtlh_data=JSON.stringify(D);
  try{await apiPost(d);toast('Saved ✓')}catch(e){toast('Saved locally — send failed: '+e.message)}
  tab='ord';ls=kind=='order'?(edit&&edit.rec.done?'d':'q'):'e';edit=null;render();setTimeout(()=>load(),2500)}
-function set(){return`<h2>Settings</h2><label>Sales sheet URL (individual sales, expenses)</label><input id="url" value="${esc(URL_)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><label>Event sheet URL (kiosk orders)</label><input id="url2" value="${esc(URL2)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><div class="btn" onclick="saveUrl()">Save &amp; connect</div><div class="btn g" onclick="load(true)">Refresh now</div>
+function set(){return`<h2>Settings</h2><label>Sales sheet URL (individual sales, expenses)</label><input id="url" value="${esc(URL_)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><label>Event sheet URL (kiosk orders)</label><input id="url2" value="${esc(URL2)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><label>Website orders URL (rtlh.art shop)</label><input id="url3" value="${esc(URL3)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"><label>Website admin key</label><input id="key3" value="${esc(KEY3)}" placeholder="ADMIN_KEY from the shop script" autocapitalize="off" autocorrect="off"><div class="btn" onclick="saveUrl()">Save &amp; connect</div><div class="btn g" onclick="load(true)">Refresh now</div>
 <div class="empty" style="text-align:left">Use a <b>new</b> Google Sheet for this app, not the event sheet. Event orders come from the kiosk's sheet; their prices are estimated from the price list since the kiosk doesn't record prices.<br><br>The event sheet URL can be left blank while testing. Data refreshes every 30 seconds while the app is open.</div>`}
-function saveUrl(){URL_=$('#url').value.trim();LS.rtlh_url=URL_;URL2=$('#url2').value.trim();LS.rtlh_url2=URL2;toast('Saved');load(true)}
+function saveUrl(){URL_=$('#url').value.trim();LS.rtlh_url=URL_;URL2=$('#url2').value.trim();LS.rtlh_url2=URL2;URL3=$('#url3').value.trim();LS.rtlh_url3=URL3;KEY3=$('#key3').value.trim();LS.rtlh_key3=KEY3;toast('Saved');load(true)}
 const TABS=[['ov','◈','Stats'],['ord','☰','Orders'],['add','+','Add'],['set','⚙','Settings']],V={ov,ord,add,set};
 function render(){const m=$('#main'),sc=m.scrollTop;m.innerHTML=V[tab]();if(tab=='add')fillCl();m.scrollTop=sc;
  $('#tabs').innerHTML=TABS.map(([k,i,l])=>`<div class="${tab==k?'on':''}" onclick="edit=null;tab='${k}';render();$('#main').scrollTop=0"><b>${i}</b>${l}</div>`).join('')}

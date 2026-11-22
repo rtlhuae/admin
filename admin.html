@@ -163,7 +163,7 @@ function needV2(){return V2()?'':`<div class="card" style="border-color:var(--go
 // ============================================================ money helpers
 const isGroup=r=>r.kind=='group';
 const qty=r=>Math.max(1,num(r.qty)||1);
-const evTotals=e=>{const L=lj(e.lines),F=lj(e.fees),items=L.reduce((a,l)=>a+num(l.qty)*num(l.price),0),fees=F.reduce((a,f)=>a+num(f.amount),0),disc=num(e.discount);return{L,F,items,fees,disc,total:items+fees-disc}};
+const evTotals=e=>{const L=lj(e.lines),F=lj(e.fees),items=L.reduce((a,l)=>a+num(l.qty)*num(l.price),0),fees=F.reduce((a,f)=>a+num(f.amount),0),dr=String(e.discount==null?'':e.discount).trim(),pct=/%$/.test(dr),dv=num(dr),disc=Math.round((pct?(items+fees)*dv/100:dv)*100)/100;return{L,F,items,fees,disc,pct,dv,total:items+fees-disc}};
 function lj(v){if(Array.isArray(v))return v;try{return JSON.parse(v||'[]')||[]}catch(e){return[]}}
 const evLive=e=>e.status=='confirmed'||e.status=='paid';
 const transportFee=em=>/^(dubai|sharjah)$/i.test(String(em||'').trim())?num(S().transportNear):num(S().transportFar);
@@ -259,14 +259,16 @@ function evDetail(){const e0=curEv();if(!e0){openEv=null;return ord()}
 <div class="btn g" style="margin-top:4px" onclick="evDraft.lines.push({product:'',desc:'',qty:1,price:0});render()">+ Add item</div>
 <h3>Fees</h3>${e.fees.map((f,i)=>`<div class="ln"><span class="x" onclick="evDraft.fees.splice(${i},1);render()">×</span><div class="row2" style="padding-right:26px"><input placeholder="Fee" value="${esc(f.label)}" oninput="evDraft.fees[${i}].label=this.value"><input style="max-width:110px" type="number" inputmode="decimal" value="${esc(f.amount)}" oninput="evDraft.fees[${i}].amount=num(this.value);evTot()"></div></div>`).join('')}
 <div class="row2"><div class="btn g" style="margin-top:4px" onclick="addTransport()">+ Booth transport</div><div class="btn g" style="margin-top:4px" onclick="evDraft.fees.push({label:'',amount:0});render()">+ Other fee</div></div>
-<label>Discount (AED)</label><input type="number" inputmode="decimal" value="${esc(e.discount)}" oninput="evDraft.discount=num(this.value);evTot()">
+<label>Discount (only shows on the quotation and invoice when added)</label><div class="row2"><input id="discv" type="number" inputmode="decimal" placeholder="None" value="${num(e.discount)||''}" oninput="setDisc(this.value)"><div class="seg" style="margin:0;flex:0 0 130px">${[['AED','AED'],['%','%']].map(([m,l])=>`<div class="${(/%$/.test(String(e.discount||''))?'%':'AED')==m?'on':''}" onclick="discMode('${m}')">${l}</div>`).join('')}</div></div>
 <div id="evtot">${evTotHtml(T)}</div>
 <label>Notes (shown on the quotation and invoice)</label><textarea rows="3" oninput="evDraft.notes=this.value">${esc(e.notes)}</textarea>
 <div class="btn" onclick="saveEv()">Save</div>
 <div class="acts" style="margin-top:10px"><div class="btn g" onclick="saveEv('quote').then(()=>showDoc('quote'))">${e.quoteNo?'Quotation '+esc(e.quoteNo):'Make quotation'}</div><div class="btn g" onclick="saveEv('invoice').then(()=>showDoc('invoice'))">${e.invoiceNo?'Invoice '+esc(e.invoiceNo):'Make invoice'}</div></div>
 ${e.status!='paid'?`<div class="btn ok" style="margin-top:10px" onclick="evDraft.status='paid';evDraft.paidDate=today();saveEv()">Mark paid</div>`:`<div class="note">Paid ${esc(e.paidDate||'')}</div>`}
 <div class="btn g" style="color:var(--bad);margin-top:24px" onclick="delEv()">Delete event</div>`}
-function evTotHtml(T){return`<div class="card" style="margin-top:14px"><div class="hb"><div class="t">Items<span>${AED(T.items)}</span></div></div><div class="hb"><div class="t">Fees<span>${AED(T.fees)}</span></div></div>${T.disc?`<div class="hb"><div class="t">Discount<span>-${AED(T.disc)}</span></div></div>`:''}<div class="tot"><span>Total</span><b>${AED(T.total)}</b></div></div>`}
+function evTotHtml(T){return`<div class="card" style="margin-top:14px"><div class="hb"><div class="t">Items<span>${AED(T.items)}</span></div></div><div class="hb"><div class="t">Fees<span>${AED(T.fees)}</span></div></div>${T.disc?`<div class="hb"><div class="t">Discount${T.pct?' ('+T.dv+'%)':''}<span>-${AED(T.disc)}</span></div></div>`:''}<div class="tot"><span>Total</span><b>${AED(T.total)}</b></div></div>`}
+function setDisc(v){const pct=/%$/.test(String(evDraft.discount||''));evDraft.discount=num(v)?num(v)+(pct?'%':''):'';evTot()}
+function discMode(m){const v=num(evDraft.discount);evDraft.discount=v?v+(m=='%'?'%':''):(m=='%'?'0%':'');render()}
 function evTot(){$('#evtot').innerHTML=evTotHtml(evTotals(evDraft))}
 function evLineProd(i,name){const l=evDraft.lines[i];l.product=name;if(name){l.price=priceOf(name);l.desc=''}render()}
 function setEmirate(v){evDraft.emirate=v;const f=evDraft.fees.find(x=>/transport/i.test(x.label));if(f){f.amount=transportFee(v);f.label='Booth transportation'+(v?' · '+v:'')}render()}
@@ -297,7 +299,7 @@ function showDoc(kind){docKind=kind;const e=curEv();if(!e)return;const s=S(),T=e
 <div><div class="cap">${isQ?'Prepared for':'Bill to'}</div><b>${esc(e.client||'—')}</b>${e.phone?'<br>'+esc(e.phone):''}${e.email?'<br>'+esc(e.email):''}</div>
 <div><div class="cap">Event</div><b>${esc(e.name)}</b>${e.date?'<br>'+esc(day(e.date)):''}${e.venue?'<br>'+esc(e.venue):''}${e.emirate?'<br>'+esc(e.emirate):''}</div></div>
 <table><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="color:#8A7F74">No items yet</td></tr>'}</tbody></table>
-<div class="sum"><div><span>Subtotal</span><span>${AED(T.items+T.fees)}</span></div>${T.disc?`<div><span>Discount</span><span>-${AED(T.disc)}</span></div>`:''}<div class="g"><span>Total</span><span>${AED(T.total)}</span></div>${!isQ&&e.status=='paid'?`<div style="color:#4F7A5A"><span>Paid ${esc(e.paidDate||'')}</span><span>${AED(T.total)}</span></div>`:''}</div>
+<div class="sum"><div><span>Subtotal</span><span>${AED(T.items+T.fees)}</span></div>${T.disc?`<div><span>Discount${T.pct?' ('+T.dv+'%)':''}</span><span>-${AED(T.disc)}</span></div>`:''}<div class="g"><span>Total</span><span>${AED(T.total)}</span></div>${!isQ&&e.status=='paid'?`<div style="color:#4F7A5A"><span>Paid ${esc(e.paidDate||'')}</span><span>${AED(T.total)}</span></div>`:''}</div>
 <div class="ft">${e.notes?esc(e.notes)+'\n\n':''}${esc(s.payment)}</div>
 <div class="bt">${esc(s.thanks)} · ${esc(s.web)} · ${esc(s.phone)}</div></div>`;
  $('#doc').classList.add('on');fitDoc()}

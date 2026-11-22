@@ -51,7 +51,7 @@ select:disabled{opacity:.45}
 .acts{display:flex;gap:8px;margin:4px 0 8px;flex-wrap:wrap}.acts .btn{margin:0;flex:1 1 40%;padding:13px 4px;font-size:11px}
 #saver{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 100px);transform:translate(-50%,30px) scale(.96);z-index:41;display:flex;align-items:center;gap:10px;background:rgba(28,25,22,.94);color:#fff;padding:12px 20px 12px 16px;border-radius:30px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease),transform .35s var(--ease),background .3s;box-shadow:0 10px 30px rgba(0,0,0,.18);white-space:nowrap}
 #saver.on{opacity:1;transform:translate(-50%,0) scale(1)}#saver.ok{background:var(--ok)}#saver.err{background:var(--bad);white-space:normal;max-width:90vw}
-#saver .sp{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .7s linear infinite;flex:none}#saver.ok .sp,#saver.err .sp{display:none}
+#saver .spin{width:20px;height:20px;flex:0 0 20px;display:block;animation:spin .8s linear infinite;transform-origin:50% 50%}#saver.wait{background:var(--gold)}#saver.ok .spin,#saver.err .spin{display:none}
 #saver .ic{display:none;font-size:17px;line-height:1}#saver.ok .ic,#saver.err .ic{display:block}
 @keyframes spin{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 100px);transform:translate(-50%,30px);background:var(--ch);color:#fff;padding:12px 20px;border-radius:30px;font-size:14px;opacity:0;transition:all .4s var(--ease);z-index:40;pointer-events:none;max-width:90vw;text-align:center}#toast.on{opacity:1;transform:translate(-50%,0)}
@@ -97,7 +97,7 @@ select:disabled{opacity:.45}
 </style></head><body>
 <div id="top"><div class="logo">RTLH</div><div id="live" onclick="load(true)"><i></i><span id="lt">—</span></div></div>
 <div id="main"></div>
-<div id="tabs"></div><div id="toast"></div><div id="saver"><i class="sp"></i><span class="ic"></span><span id="svt">Saving…</span></div>
+<div id="tabs"></div><div id="toast"></div><div id="saver"><svg class="spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="3"/><path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg><span class="ic"></span><span id="svt">Saving…</span></div>
 <div id="sheet" onclick="if(event.target==this)closeSheet()"><div id="sheetc"></div></div>
 <div id="doc"><div class="bar"><div class="btn g" onclick="$('#doc').classList.remove('on')">Close</div><div class="btn gold" id="docshare" onclick="sharePdf()">Share PDF</div></div><div class="wrap"><div id="docpage"></div></div></div>
 <script>
@@ -127,7 +127,7 @@ const inR=r=>day(r.date)>=cut();
 const S=()=>Object.assign({},DEFSET,D.settings||{});
 const V2=()=>(D.v||0)>=2;
 const save=()=>{try{LS.rtlh_data2=JSON.stringify(D)}catch(e){}};
-function toast(m){if(typeof pending!='undefined'&&pending)return;$('#saver').className='';const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2600)}
+function toast(m){if(typeof OB!='undefined'&&pendingN())return;$('#saver').className='';const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2600)}
 function setLive(c,t){$('#live').className=c;$('#lt').textContent=t}
 // ============================================================ catalog (from rtlh.art)
 function buildCat(c){if(!c)return;CATL=c;IMG=c.img||IMG;PRODUCTS=c.products}
@@ -141,9 +141,14 @@ const pimg=(p,color)=>{if(!p)return'Assets/RTLHPlainLogo.jpg';const c=colorOf(p,
 const priceOf=n=>{const p=prod(n);return p?p.price||0:0};
 const sellable=()=>PRODUCTS.filter(p=>!p.hidden||p.price>0||p.colors.length);
 // ============================================================ sync
+let curCtl=null,curStart=0;
+class NetErr extends Error{}
 async function apiPost(payload){
  if(!URL_)throw new Error('No sheet URL in Settings');
- const res=await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),redirect:'follow'});
+ const ctl=new AbortController();curCtl=ctl;curStart=Date.now();const to=setTimeout(()=>ctl.abort(),30000);let res;
+ try{res=await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),redirect:'follow',signal:ctl.signal})}
+ catch(e){throw new NetErr('No connection')}finally{clearTimeout(to);curCtl=null}
+ if(res.status>=500||res.status==0)throw new NetErr('Sheet busy');
  const text=await res.text();if(!res.ok)throw new Error('Sheet HTTP '+res.status);
  if(String(text).trim()==='OK')return{ok:true};
  let j;try{j=JSON.parse(text)}catch(err){throw new Error('Sheet did not answer')}
@@ -156,21 +161,45 @@ async function load(manual){
  try{
   const jobs=[loadCatalog()];
   if(URL_)jobs.push(fetch(URL_,{cache:'no-store',redirect:'follow'}).then(r=>r.text()).then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error('Sales sheet did not return data')}if(j.ok===false)throw new Error(j.error);
-   D.orders=j.orders||[];D.expenses=j.expenses||[];D.v=j.v||0;if(j.v>=2){D.events=j.events||[];D.stock=j.stock||[];D.moves=j.moves||[];D.settings=j.settings||{}}}));
+   D.orders=j.orders||[];D.expenses=j.expenses||[];D.v=j.v||0;OB.get().forEach(({p})=>{if(p.action=='order'&&!D.orders.some(o=>String(o.id)==String(p.id)))D.orders.push({...p});if(p.action=='orders')p.rows.forEach(r=>{if(!D.orders.some(o=>String(o.id)==String(r.id)))D.orders.push({...r})});if(p.action=='expense'&&!D.expenses.some(o=>String(o.id)==String(p.id)))D.expenses.push({...p})});if(j.v>=2){D.events=j.events||[];D.stock=j.stock||[];D.moves=j.moves||[];D.settings=j.settings||{}}}));
   if(URL2)jobs.push(fetch(URL2,{cache:'no-store',redirect:'follow'}).then(r=>r.text()).then(t=>{const v=JSON.parse(t);D.kiosk=(Array.isArray(v)?v:[]).map(kRow).filter(Boolean)}));
   const res=await Promise.allSettled(jobs);const bad=res.find(r=>r.status=='rejected');
   save();
   if(bad){setLive('err','Partly offline');if(manual)toast(bad.reason.message)}else{setLive('ok','Live · '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));if(manual)toast('Updated')}
   if(!document.activeElement||!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))render();
  }catch(e){setLive('err','Offline · cached');if(manual)toast('Could not reach sheet: '+e.message)}finally{busy=false}}
-let pending=0,svT;
+// ---- outbox: every save is kept on the phone until the sheet confirms it, so leaving the app never loses it
+let svT,working=false,waiting=false,lastMsg='';const waiters={};
+const OB={get(){try{return JSON.parse(LS.rtlh_outbox)||[]}catch(e){return[]}},set(a){try{LS.rtlh_outbox=JSON.stringify(a)}catch(e){}}};
+const pendingN=()=>OB.get().length;
 function saver(state,text){const el=$('#saver');clearTimeout(svT);el.className='on '+(state||'');$('#svt').textContent=text;el.querySelector('.ic').textContent=state=='ok'?'✓':state=='err'?'!':'';
- if(state=='ok')svT=setTimeout(()=>el.className='',1400);if(state=='err')svT=setTimeout(()=>el.className='',5000)}
-async function post(payload,okMsg){pending++;$('#toast').classList.remove('on');saver('',pending>1?'Saving '+pending+'…':'Saving…');
- try{const j=await apiPost(payload);pending--;if(pending)saver('','Saving…');else saver('ok',okMsg?okMsg.replace(/\s*✓$/,''):'Saved');return j}
- catch(e){pending--;saver('err','Not saved to the sheet — '+e.message);return null}
- finally{setTimeout(()=>load(),2000)}}
-window.addEventListener('beforeunload',e=>{if(pending){e.preventDefault();e.returnValue=''}});
+ if(state=='ok')svT=setTimeout(()=>el.className='',1500);if(state=='err')svT=setTimeout(()=>el.className='',6000)}
+function showSaver(){const n=pendingN();if(!n)return;saver(waiting?'wait':'',waiting?'No internet · '+(n>1?n+' changes':'change')+' kept on phone':(n>1?'Saving '+n+'…':'Saving…'))}
+function post(payload,okMsg){$('#toast').classList.remove('on');const it={qid:Date.now()+'-'+Math.random().toString(36).slice(2,7),p:payload,msg:okMsg||'',tries:0};
+ OB.set(OB.get().concat(it));showSaver();const pr=new Promise(r=>waiters[it.qid]=r);flushOutbox();return pr}
+const isAppend=p=>p.action=='order'||p.action=='orders'||p.action=='expense';
+async function alreadySaved(p){const t=await fetch(URL_,{cache:'no-store',redirect:'follow'}).then(r=>r.text());const j=JSON.parse(t);
+ const ids=new Set((p.action=='expense'?j.expenses:j.orders).map(r=>String(r.id)));const want=p.action=='orders'?p.rows.map(r=>String(r.id)):[String(p.id)];return want.every(id=>ids.has(id))}
+async function flushOutbox(){if(working)return;working=true;let any=false;
+ try{while(true){const q=OB.get();if(!q.length)break;const it=q[0];waiting=false;showSaver();
+  try{let res;if(it.tries>0&&isAppend(it.p)&&await alreadySaved(it.p).catch(()=>false))res={ok:true};else res=await apiPost(it.p);
+   OB.set(OB.get().filter(x=>x.qid!==it.qid));lastMsg=it.msg||lastMsg;any=true;if(waiters[it.qid]){waiters[it.qid](res);delete waiters[it.qid]}}
+  catch(e){if(e instanceof NetErr){it.tries++;OB.set(OB.get().map(x=>x.qid==it.qid?it:x));waiting=true;Object.keys(waiters).forEach(k=>{waiters[k](null);delete waiters[k]});break}
+   OB.set(OB.get().filter(x=>x.qid!==it.qid));if(waiters[it.qid]){waiters[it.qid](null);delete waiters[it.qid]}saver('err','Not saved: '+e.message);any=false}}}
+ finally{working=false}
+ if(waiting)showSaver();else if(any&&!pendingN()){saver('ok',lastMsg?lastMsg.replace(/\s*✓$/,''):'Saved');lastMsg='';setTimeout(()=>load(),1500)}}
+// iPhone pauses the app in the background: on return, restart any save that got stuck and send what's waiting
+function resume(){if(working&&curCtl&&Date.now()-curStart>8000)curCtl.abort();flushOutbox()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume()});window.addEventListener('online',resume);window.addEventListener('pageshow',resume);setInterval(()=>{if(pendingN()&&!working)flushOutbox()},15000);
+// ---- drafts: what you type stays when you switch tabs or close the app
+let DR=(()=>{try{return JSON.parse(LS.rtlh_drafts)||{}}catch(e){return{}}})();
+const vkey=()=>tab=='add'?'add/'+(edit?edit.kind+edit.id:as):tab=='set'?'set':'';
+function keepDraft(e){const t=e.target,k=vkey();if(!k||!t.id||!/^(f_|s_|url)/.test(t.id))return;(DR[k]=DR[k]||{})[t.id]=t.value;try{LS.rtlh_drafts=JSON.stringify(DR)}catch(x){}}
+document.addEventListener('input',keepDraft,true);document.addEventListener('change',keepDraft,true);
+function restoreDraft(){const d=DR[vkey()];if(!d)return;Object.entries(d).forEach(([id,v])=>{const el=document.getElementById(id);if(el&&el.value!==v)el.value=v})}
+function clearDraft(k){delete DR[k||vkey()];try{LS.rtlh_drafts=JSON.stringify(DR)}catch(x){}}
+function saveUI(){try{LS.rtlh_ui=JSON.stringify({lines,OF,ordMode,evDraft,takeStock})}catch(x){}}
+try{const u=JSON.parse(LS.rtlh_ui||'null');if(u){lines=u.lines||[];OF=u.OF||{};ordMode=u.ordMode||'items';evDraft=u.evDraft||null;if(u.takeStock===false)takeStock=false}}catch(x){}
 function needV2(){return V2()?'':`<div class="card" style="border-color:var(--gold);margin-bottom:14px"><b>One step to switch this on</b><div class="note">Paste the new code into your Google Sheet (Extensions → Apps Script) and deploy a new version. The steps are at the top of <b>backend/Code.gs</b> in the admin repo.</div></div>`}
 // ============================================================ money helpers
 const isGroup=r=>r.kind=='group';
@@ -376,20 +405,20 @@ async function submitOrder(){
  rows.forEach((r,i)=>{r.id=String(Date.now()+i);r.ref=rows.length>1?ref:''});
  D.orders.push(...rows);save();
  const moves=takeStock?L.filter(l=>prod(l.product)&&(l.color||!prod(l.product).colors.length)).map(l=>({kind:'sale',product:l.product,color:l.color,qty:l.qty,note:base.customer||'Order',ref:rows[0].id,sub:'o'+rows[0].id+l.product+l.color})):[];
- lines=[];OF={};ordMode='items';tab='ord';ls='q';render();
+ lines=[];OF={};ordMode='items';clearDraft('add/o');tab='ord';ls='q';render();
  await post(rows.length>1?{action:'orders',rows}:{action:'order',...rows[0]},'Saved ✓');
  if(moves.length&&V2())post({action:'stock_moves',moves,by:ME})}
-async function submitEditOrder(){const d={action:'update_order',id:edit.id,date:g_('date'),customer:g_('customer'),product:g_('product'),color:g_('color'),qty:num(g_('qty'))||1,type:g_('type'),text:g_('text'),price:num(g_('price')),notes:g_('notes')};
- const r=D.orders.find(x=>String(x.id)==String(edit.id));if(r)Object.assign(r,d,{action:undefined});save();ls=edit.rec.done?'d':'q';edit=null;tab='ord';render();post(d,'Saved ✓')}
-async function submitExp(){const d={action:'expense',date:g_('date'),category:g_('category'),description:g_('description'),amount:num(g_('amount')),paidBy:g_('paidBy')=='RTLH account'?'RTLH':g_('paidBy'),settled:edit&&edit.rec.settled?isSet(edit.rec.settled):false};
+async function submitEditOrder(){const _dk=vkey();const d={action:'update_order',id:edit.id,date:g_('date'),customer:g_('customer'),product:g_('product'),color:g_('color'),qty:num(g_('qty'))||1,type:g_('type'),text:g_('text'),price:num(g_('price')),notes:g_('notes')};
+ const r=D.orders.find(x=>String(x.id)==String(edit.id));if(r)Object.assign(r,d,{action:undefined});clearDraft(_dk);save();ls=edit.rec.done?'d':'q';edit=null;tab='ord';render();post(d,'Saved ✓')}
+async function submitExp(){const _dk=vkey();const d={action:'expense',date:g_('date'),category:g_('category'),description:g_('description'),amount:num(g_('amount')),paidBy:g_('paidBy')=='RTLH account'?'RTLH':g_('paidBy'),settled:edit&&edit.rec.settled?isSet(edit.rec.settled):false};
  if(!d.amount)return toast('Amount needed');if(!g_('paidBy'))return toast('Who paid?');
  if(edit){d.id=edit.id;d.action='update_expense';const r=D.expenses.find(x=>String(x.id)==String(edit.id));if(r)Object.assign(r,d,{action:undefined})}else{d.id=String(Date.now());D.expenses.push({...d})}
- save();edit=null;tab='ord';ls='e';render();post(d,'Saved ✓')}
-async function createEv(){const name=g_('name').trim();if(!name)return toast('Event name needed');const em=g_('emirate');
+ clearDraft(_dk);save();edit=null;tab='ord';ls='e';render();post(d,'Saved ✓')}
+async function createEv(){const _dk=vkey();const name=g_('name').trim();if(!name)return toast('Event name needed');const em=g_('emirate');
  const k=kioskFor(name),m={};k.forEach(x=>m[x.product]=(m[x.product]||0)+1);
  const e={id:String(Date.now()),name,client:g_('client'),phone:g_('phone'),date:g_('date'),emirate:em,venue:g_('venue'),status:'quote',
   lines:Object.entries(m).map(([p,n])=>({product:prod(p)?p:'',desc:prod(p)?'':p,qty:n,price:priceOf(p)})),fees:[{label:'Booth transportation · '+em,amount:transportFee(em)}],discount:0,notes:''};
- D.events.push({...e,lines:JSON.stringify(e.lines),fees:JSON.stringify(e.fees)});save();tab='ord';ls='v';openEv=e.id;evDraft=null;render();$('#main').scrollTop=0;
+ clearDraft(_dk);D.events.push({...e,lines:JSON.stringify(e.lines),fees:JSON.stringify(e.fees)});save();tab='ord';ls='v';openEv=e.id;evDraft=null;render();$('#main').scrollTop=0;
  const j=await post({action:'event_save',event:e},'Event created ✓');if(j&&j.event){const i=D.events.findIndex(x=>x.id==e.id);D.events[i]=j.event;save()}}
 // ============================================================ STOCK
 const sKey=(p,c)=>p+'|'+(c||'');
@@ -485,15 +514,15 @@ function set(){const s=S(),f=(k,l,t)=>`<label>${l}</label><input id="s_${k}" ${t
 <h3>Stock</h3>${f('lowDefault','Low-stock alert at (pieces per colour)','type="number" inputmode="numeric"')}
 <div class="btn" onclick="saveSettings()">Save settings</div><div class="btn g" onclick="load(true)">Refresh now</div>
 <div class="note" style="margin-top:16px">Products, prices and photos come from rtlh.art. To change them, edit the website's products file and they update here and on the kiosk.</div>`}
-function saveUrl(){URL_=$('#url').value.trim();LS.rtlh_url=URL_;URL2=$('#url2').value.trim();LS.rtlh_url2=URL2;toast('Saved');load(true)}
-async function saveSettings(){const o={};Object.keys(DEFSET).forEach(k=>{const e=$('#s_'+k);if(e)o[k]=e.value});D.settings=Object.assign({},D.settings,o);save();
+function saveUrl(){const _dk=vkey();URL_=$('#url').value.trim();LS.rtlh_url=URL_;URL2=$('#url2').value.trim();LS.rtlh_url2=URL2;clearDraft(_dk);toast('Saved');load(true)}
+async function saveSettings(){const _dk=vkey();const o={};Object.keys(DEFSET).forEach(k=>{const e=$('#s_'+k);if(e)o[k]=e.value});clearDraft(_dk);D.settings=Object.assign({},D.settings,o);save();
  if(!V2())return toast('Saved on this phone — update the sheet code to share with your partner');const j=await post({action:'settings_save',settings:o},'Settings saved ✓');if(j&&j.settings){D.settings=j.settings;save()}}
 // ============================================================ shell
 const TABS=[['ov','◈','Stats'],['ord','☰','Orders'],['add','+','Add'],['st','▦','Stock'],['set','⚙','Settings']],VW={ov,ord,add,st,set};
-function render(){const m=$('#main'),sc=m.scrollTop;m.innerHTML=VW[tab]();m.scrollTop=sc;const al=V2()?stockAlerts().filter(a=>a.free<=0).length:0;
- $('#tabs').innerHTML=TABS.map(([k,i,l])=>`<div class="${tab==k?'on':''}" onclick="edit=null;openEv=null;evDraft=null;tab='${k}';q='';render();$('#main').scrollTop=0"><b>${i}</b>${l}${k=='st'&&al?`<sup>${al}</sup>`:''}</div>`).join('')}
+function render(){const m=$('#main'),sc=m.scrollTop;m.innerHTML=VW[tab]();restoreDraft();saveUI();m.scrollTop=sc;const al=V2()?stockAlerts().filter(a=>a.free<=0).length:0;
+ $('#tabs').innerHTML=TABS.map(([k,i,l])=>`<div class="${tab==k?'on':''}" onclick="openEv=(tab=='${k}'?null:openEv);tab='${k}';q='';render();$('#main').scrollTop=0"><b>${i}</b>${l}${k=='st'&&al?`<sup>${al}</sup>`:''}</div>`).join('')}
 window.addEventListener('resize',()=>{if($('#doc').classList.contains('on'))fitDoc()});
 render();load();setInterval(()=>{if(!document.hidden&&!$('#sheet').classList.contains('on')&&!(tab=='add')&&!(tab=='ord'&&openEv)&&!Object.keys(cart).length)load()},30000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});flushOutbox();
 ['gesturestart','gesturechange'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
 </script></body></html>

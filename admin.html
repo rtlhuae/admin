@@ -49,6 +49,11 @@ select:disabled{opacity:.45}
 .btn{display:block;text-align:center;background:var(--ch);color:#fff;border-radius:6px;padding:16px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-top:20px;text-decoration:none}.btn:active{opacity:.8}.btn.g{background:none;color:var(--ch);border:1px solid var(--bd)}.btn.ok{background:var(--ok)}.btn.gold{background:var(--gold)}.btn.off{opacity:.35;pointer-events:none}
 .row2{display:flex;gap:8px}.row2>*{flex:1;min-width:0}
 .acts{display:flex;gap:8px;margin:4px 0 8px;flex-wrap:wrap}.acts .btn{margin:0;flex:1 1 40%;padding:13px 4px;font-size:11px}
+#saver{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 100px);transform:translate(-50%,30px) scale(.96);z-index:41;display:flex;align-items:center;gap:10px;background:rgba(28,25,22,.94);color:#fff;padding:12px 20px 12px 16px;border-radius:30px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease),transform .35s var(--ease),background .3s;box-shadow:0 10px 30px rgba(0,0,0,.18);white-space:nowrap}
+#saver.on{opacity:1;transform:translate(-50%,0) scale(1)}#saver.ok{background:var(--ok)}#saver.err{background:var(--bad);white-space:normal;max-width:90vw}
+#saver .sp{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .7s linear infinite;flex:none}#saver.ok .sp,#saver.err .sp{display:none}
+#saver .ic{display:none;font-size:17px;line-height:1}#saver.ok .ic,#saver.err .ic{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 100px);transform:translate(-50%,30px);background:var(--ch);color:#fff;padding:12px 20px;border-radius:30px;font-size:14px;opacity:0;transition:all .4s var(--ease);z-index:40;pointer-events:none;max-width:90vw;text-align:center}#toast.on{opacity:1;transform:translate(-50%,0)}
 .empty{text-align:center;color:var(--wg);padding:36px 10px;font-size:14px;line-height:1.6}
 .note{font-size:13px;color:var(--wg);line-height:1.55;margin-top:8px}
@@ -92,7 +97,7 @@ select:disabled{opacity:.45}
 </style></head><body>
 <div id="top"><div class="logo">RTLH</div><div id="live" onclick="load(true)"><i></i><span id="lt">—</span></div></div>
 <div id="main"></div>
-<div id="tabs"></div><div id="toast"></div>
+<div id="tabs"></div><div id="toast"></div><div id="saver"><i class="sp"></i><span class="ic"></span><span id="svt">Saving…</span></div>
 <div id="sheet" onclick="if(event.target==this)closeSheet()"><div id="sheetc"></div></div>
 <div id="doc"><div class="bar"><div class="btn g" onclick="$('#doc').classList.remove('on')">Close</div><div class="btn gold" id="docshare" onclick="sharePdf()">Share PDF</div></div><div class="wrap"><div id="docpage"></div></div></div>
 <script>
@@ -122,7 +127,7 @@ const inR=r=>day(r.date)>=cut();
 const S=()=>Object.assign({},DEFSET,D.settings||{});
 const V2=()=>(D.v||0)>=2;
 const save=()=>{try{LS.rtlh_data2=JSON.stringify(D)}catch(e){}};
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2600)}
+function toast(m){if(typeof pending!='undefined'&&pending)return;$('#saver').className='';const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2600)}
 function setLive(c,t){$('#live').className=c;$('#lt').textContent=t}
 // ============================================================ catalog (from rtlh.art)
 function buildCat(c){if(!c)return;CATL=c;IMG=c.img||IMG;PRODUCTS=c.products}
@@ -158,7 +163,14 @@ async function load(manual){
   if(bad){setLive('err','Partly offline');if(manual)toast(bad.reason.message)}else{setLive('ok','Live · '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));if(manual)toast('Updated')}
   if(!document.activeElement||!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))render();
  }catch(e){setLive('err','Offline · cached');if(manual)toast('Could not reach sheet: '+e.message)}finally{busy=false}}
-async function post(payload,okMsg){try{const j=await apiPost(payload);if(okMsg)toast(okMsg);return j}catch(e){toast('Saved here — sheet not updated: '+e.message);return null}finally{setTimeout(()=>load(),2000)}}
+let pending=0,svT;
+function saver(state,text){const el=$('#saver');clearTimeout(svT);el.className='on '+(state||'');$('#svt').textContent=text;el.querySelector('.ic').textContent=state=='ok'?'✓':state=='err'?'!':'';
+ if(state=='ok')svT=setTimeout(()=>el.className='',1400);if(state=='err')svT=setTimeout(()=>el.className='',5000)}
+async function post(payload,okMsg){pending++;$('#toast').classList.remove('on');saver('',pending>1?'Saving '+pending+'…':'Saving…');
+ try{const j=await apiPost(payload);pending--;if(pending)saver('','Saving…');else saver('ok',okMsg?okMsg.replace(/\s*✓$/,''):'Saved');return j}
+ catch(e){pending--;saver('err','Not saved to the sheet — '+e.message);return null}
+ finally{setTimeout(()=>load(),2000)}}
+window.addEventListener('beforeunload',e=>{if(pending){e.preventDefault();e.returnValue=''}});
 function needV2(){return V2()?'':`<div class="card" style="border-color:var(--gold);margin-bottom:14px"><b>One step to switch this on</b><div class="note">Paste the new code into your Google Sheet (Extensions → Apps Script) and deploy a new version. The steps are at the top of <b>backend/Code.gs</b> in the admin repo.</div></div>`}
 // ============================================================ money helpers
 const isGroup=r=>r.kind=='group';

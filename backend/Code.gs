@@ -92,7 +92,11 @@ function settings_() {
 }
 
 // ---------------------------------------------------------------- read
-function doGet() {
+function doGet(e) {
+  // Tiny "has anything changed?" check used by the Admin app every few seconds
+  if (e && e.parameter && e.parameter.rev) {
+    return json_({ ok: true, rev: PropertiesService.getScriptProperties().getProperty('rev') || '0' });
+  }
   try {
     const moves = rows_('Moves');
     return json_({
@@ -116,6 +120,7 @@ function doPost(e) {
   try {
     const d = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const out = handle_(d) || {};
+    PropertiesService.getScriptProperties().setProperty('rev', String(Date.now()));
     out.ok = true;
     return json_(out);
   } catch (err) {

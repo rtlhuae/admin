@@ -15,7 +15,7 @@ const DONE_GREEN = '#b7e1cd';
 const COLS = {
   Orders: ['id', 'date', 'customer', 'product', 'color', 'type', 'text', 'price', 'notes', 'qty', 'kind', 'ref', 'channel'],
   Expenses: ['id', 'date', 'category', 'description', 'amount', 'paidBy', 'settled'],
-  Events: ['id', 'name', 'client', 'phone', 'email', 'date', 'emirate', 'venue', 'status', 'lines', 'fees', 'discount', 'notes',
+  Events: ['id', 'name', 'client', 'phone', 'email', 'date', 'emirate', 'venue', 'status', 'lines', 'fees', 'discount', 'notes', 'terms',
     'quoteNo', 'quoteDate', 'invoiceNo', 'invoiceDate', 'paidDate', 'stockDone', 'updated'],
   Stock: ['product', 'color', 'physical', 'reserved', 'incoming', 'low', 'updated'],
   Moves: ['id', 'time', 'kind', 'product', 'color', 'qty', 'physical', 'reserved', 'incoming', 'note', 'ref', 'by'],

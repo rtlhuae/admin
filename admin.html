@@ -88,11 +88,11 @@ select:disabled{opacity:.45}
 .dp .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1C1916;padding-bottom:22px}
 .dp .hd img{width:70px;height:70px;border-radius:50%;object-fit:cover}.dp .brand{font-family:'Cormorant Garamond',serif;font-size:34px;letter-spacing:.24em}
 .dp .tt{text-align:right}.dp .tt h1{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:38px;letter-spacing:.12em}.dp .tt div{color:#6e655b;margin-top:2px}
-.dp .two{display:flex;gap:22px;margin:24px 0;font-size:12px;line-height:1.55}.dp .two>div{flex:1}.dp .cap{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8A7F74;margin-bottom:6px}
+.dp .two{display:flex;gap:30px;margin:26px 0}.dp .two>div{flex:1}.dp .cap{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8A7F74;margin-bottom:6px}
 .dp table{width:100%;border-collapse:collapse;margin-top:6px}.dp th{text-align:left;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8A7F74;font-weight:500;padding:10px 6px;border-bottom:1px solid #1C1916}
 .dp td{padding:11px 6px;border-bottom:1px solid #E2D8C8;vertical-align:top}.dp .r{text-align:right;white-space:nowrap}
 .dp .sum{margin-left:auto;width:300px;margin-top:16px}.dp .sum div{display:flex;justify-content:space-between;padding:6px 6px}.dp .sum .g{border-top:2px solid #1C1916;margin-top:6px;padding-top:12px;font-size:18px;font-weight:500}
-.dp .ft{margin-top:22px;color:#4a443d;line-height:1.5;white-space:pre-line;font-size:12px}.dp .stamp{position:absolute;top:210px;right:70px;border:3px solid #4F7A5A;color:#4F7A5A;font-size:30px;letter-spacing:.2em;padding:6px 18px;transform:rotate(-8deg);opacity:.8}
+.dp .ft{margin-top:34px;color:#4a443d;line-height:1.6;white-space:pre-line}.dp .stamp{position:absolute;top:210px;right:70px;border:3px solid #4F7A5A;color:#4F7A5A;font-size:30px;letter-spacing:.2em;padding:6px 18px;transform:rotate(-8deg);opacity:.8}
 .dp .bt{position:absolute;bottom:40px;left:60px;right:60px;text-align:center;font-size:11px;color:#8A7F74;border-top:1px solid #E2D8C8;padding-top:12px}
 </style></head><body>
 <div id="top"><div class="logo">RTLH</div><div id="live" onclick="load(true)"><i></i><span id="lt">—</span></div></div>
@@ -206,9 +206,10 @@ const isGroup=r=>r.kind=='group';
 const qty=r=>Math.max(1,num(r.qty)||1);
 const evTotals=e=>{const L=lj(e.lines),F=lj(e.fees),items=L.reduce((a,l)=>a+num(l.qty)*num(l.price),0),fees=F.reduce((a,f)=>a+num(f.amount),0),dr=String(e.discount==null?'':e.discount).trim(),pct=/%$/.test(dr),dv=num(dr),disc=Math.round((pct?(items+fees)*dv/100:dv)*100)/100;return{L,F,items,fees,disc,pct,dv,total:items+fees-disc}};
 const TERMS=['Due on receipt','50% advance, balance on event day','100% advance before the event','Net 7 days','Net 15 days','Net 30 days'];
-const TRE=/^\[\[terms:(.*?)\]\]\s*/;
-function evIn(e){const n=String(e.notes||''),m=n.match(TRE);return{...e,lines:lj(e.lines),fees:lj(e.fees),terms:e.terms||(m?m[1]:''),notes:n.replace(TRE,''),phone:showPhone(e.phone)}}
-function evOut(e){return{...e,notes:(e.terms?'[[terms:'+e.terms+']] ':'')+(e.notes||''),phone:textPhone(e.phone)}}
+function meta(n){const m={};n=String(n||'');let x;while((x=n.match(/^\[\[(\w+):(.*?)\]\]\s*/))){m[x[1]]=x[2];n=n.slice(x[0].length)}return{m,n}}
+function evIn(e){const{m,n}=meta(e.notes);return{...e,lines:lj(e.lines),fees:lj(e.fees),terms:e.terms||m.terms||'',paid:num(e.paidAmount||m.paid),notes:n,phone:showPhone(e.phone)}}
+function evOut(e){const{paid,...r}=e;return{...r,notes:(e.terms?'[[terms:'+e.terms+']] ':'')+(num(paid)?'[[paid:'+num(paid)+']] ':'')+(e.notes||''),phone:textPhone(e.phone)}}
+const evPaid=e=>evIn(e).paid||(e.status=='paid'?evTotals(e).total:0);
 // Google Sheets drops a leading 0 from numbers; a leading ' keeps it as typed
 const textPhone=p=>{p=String(p||'').trim();return/^[0+]/.test(p)?"'"+p:p};
 const showPhone=p=>{p=String(p||'').trim().replace(/^'/,'');return/^5\d{8}$/.test(p)?'0'+p:p};
@@ -233,13 +234,13 @@ function ov(){
  const days=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return d.toLocaleDateString('en-CA')});
  const dv=days.map(d=>(src=='event'?0:D.orders.filter(r=>day(r.date)==d).reduce((a,r)=>a+num(r.price),0))+(src=='direct'?0:D.events.filter(e=>evLive(e)&&day(e.date)==d).reduce((a,e)=>a+evTotals(e).total,0))),mx=Math.max(...dv,1);
  const ec={};E.forEach(r=>ec[r.category]=(ec[r.category]||0)+num(r.amount));
- const todo=groups(D.orders.filter(r=>!r.done)).length,alerts=stockAlerts(),unpaid=D.events.filter(e=>e.status=='confirmed'&&e.invoiceNo);
+ const todo=groups(D.orders.filter(r=>!r.done)).length,alerts=stockAlerts(),unpaid=D.events.filter(e=>e.status=='confirmed'&&e.invoiceNo&&evTotals(e).total-evPaid(e)>0);
  const best=tally(units,'product')[0];
  const evT=[...new Set(EV.map(e=>e.name))].map(n=>[n,{n:K.filter(k=>norm(k.event)==norm(n)).length,rev:EV.filter(e=>e.name==n).reduce((a,e)=>a+evTotals(e).total,0)}]).sort((a,b)=>b[1].rev-a[1].rev);
  return`<h2>Overview</h2>
 ${bal()?`<div class="card alert" onclick="go('ord','e')"><span>${bal()}</span><b>View →</b></div>`:''}
 ${todo?`<div class="card alert" onclick="go('ord','q')"><span>${todo} order${todo>1?'s':''} to fulfil</span><b>View →</b></div>`:''}
-${unpaid.length?`<div class="card alert" onclick="go('ord','v')"><span>${unpaid.length} event invoice${unpaid.length>1?'s':''} unpaid · ${AED(unpaid.reduce((a,e)=>a+evTotals(e).total,0))}</span><b>View →</b></div>`:''}
+${unpaid.length?`<div class="card alert" onclick="go('ord','v')"><span>${unpaid.length} event invoice${unpaid.length>1?'s':''} unpaid · ${AED(unpaid.reduce((a,e)=>a+evTotals(e).total-evPaid(e),0))} due</span><b>View →</b></div>`:''}
 ${alerts.length?`<div class="card alert" onclick="tab='st';stv='ov';render()"><span>${alerts.filter(a=>a.free<=0).length} out · ${alerts.filter(a=>a.free>0).length} low in stock</span><b>Stock →</b></div>`:''}
 <div class="chips">${[[7,'7D'],[30,'30D'],[90,'90D'],[0,'All']].map(([v,l])=>`<div class="${range==v?'on':''}" onclick="range=${v};render()">${l}</div>`).join('')}</div>
 <div class="kp"><div class="k w"><small>Profit</small><b class="${pf>=0?'pos':'neg'}">${AED(pf)}</b></div>
@@ -315,8 +316,19 @@ function evDetail(){const e0=curEv();if(!e0){openEv=null;return ord()}
 <label>Notes (shown on the quotation and invoice)</label><textarea rows="3" oninput="evDraft.notes=this.value">${esc(e.notes)}</textarea>
 <div class="btn" onclick="saveEv()">Save</div>
 <div class="acts" style="margin-top:10px"><div class="btn g" onclick="saveEv('quote').then(()=>showDoc('quote'))">${e.quoteNo?'Quotation '+esc(e.quoteNo):'Make quotation'}</div><div class="btn g" onclick="saveEv('invoice').then(()=>showDoc('invoice'))">${e.invoiceNo?'Invoice '+esc(e.invoiceNo):'Make invoice'}</div></div>
-${e.status!='paid'?`<div class="btn ok" style="margin-top:10px" onclick="evDraft.status='paid';evDraft.paidDate=today();saveEv()">Mark paid</div>`:`<div class="note">Paid ${esc(e.paidDate||'')}</div>`}
+${payBlock(e,T)}
 <div class="btn g" style="color:var(--bad);margin-top:24px" onclick="delEv()">Delete event</div>`}
+function payBlock(e,T){const paid=num(e.paid)||(e.status=='paid'?T.total:0),rem=Math.max(0,T.total-paid);
+ return`<div class="card" style="margin-top:14px"><div class="hb"><div class="t"><b style="font-weight:500">${paid>=T.total&&T.total>0?'Paid in full':paid>0?'Part paid':'Not paid yet'}</b><span>${e.paidDate?esc(e.paidDate):''}</span></div></div>${paid>0?`<div class="hb"><div class="t">Paid<span class="pos">${AED(paid)}</span></div></div>`:''}${rem>0&&paid>0?`<div class="hb"><div class="t">Balance due<span>${AED(rem)}</span></div></div>`:''}</div>
+<div class="acts" style="margin-top:10px">${rem>0?`<div class="btn ok" onclick="payOpts()">Record payment</div>`:''}${paid>0?`<div class="btn g" style="color:var(--bad)" onclick="markUnpaid()">Mark unpaid</div>`:''}</div>`}
+function payOpts(){const e=evDraft,T=evTotals(e),paid=num(e.paid)||(e.status=='paid'?T.total:0),rem=Math.max(0,T.total-paid),half=Math.round(T.total/2);
+ const opt=(label,amt)=>`<div class="btn ${amt==rem?'ok':'g'}" onclick="recordPay(${amt})">${label} · ${AED(amt)}</div>`;
+ $('#sheetc').innerHTML=`<h2 style="font-size:26px">Record payment</h2><div class="note" style="margin:-6px 0 6px">${esc(e.name)} · total ${AED(T.total)}${paid?' · already paid '+AED(paid):''}${e.terms?'<br>Terms: '+esc(e.terms):''}</div>
+${!paid&&(/50%/.test(e.terms||''))?opt('Paid 50% deposit',half):''}${opt(paid?'Paid the balance':'Paid in full',rem)}${!paid&&!/50%/.test(e.terms||'')?opt('Paid half',half):''}
+<div class="btn g" onclick="const v=prompt('Amount received (AED)');if(v&&num(v)>0)recordPay(num(v))">Other amount…</div><div class="btn g" onclick="closeSheet()">Cancel</div>`;$('#sheet').classList.add('on')}
+function recordPay(amt){const e=evDraft,T=evTotals(e),before=num(e.paid)||(e.status=='paid'?T.total:0);e.paid=Math.min(T.total,before+amt);e.paidDate=today();
+ e.status=e.paid>=T.total?'paid':(e.status=='paid'||e.status=='quote'?'confirmed':e.status);closeSheet();saveEv();toast(e.status=='paid'?'Marked paid in full':'Recorded '+AED(amt))}
+function markUnpaid(){if(!confirm('Mark this event as not paid?'))return;const e=evDraft;e.paid=0;e.paidDate='';if(e.status=='paid')e.status='confirmed';saveEv()}
 function evTotHtml(T){return`<div class="card" style="margin-top:14px"><div class="hb"><div class="t">Items<span>${AED(T.items)}</span></div></div><div class="hb"><div class="t">Fees<span>${AED(T.fees)}</span></div></div>${T.disc?`<div class="hb"><div class="t">Discount${T.pct?' ('+T.dv+'%)':''}<span>-${AED(T.disc)}</span></div></div>`:''}<div class="tot"><span>Total</span><b>${AED(T.total)}</b></div></div>`}
 function setDisc(v){const pct=/%$/.test(String(evDraft.discount||''));evDraft.discount=num(v)?num(v)+(pct?'%':''):'';evTot()}
 function discMode(m){const v=num(evDraft.discount);evDraft.discount=v?v+(m=='%'?'%':''):(m=='%'?'0%':'');render()}
@@ -341,19 +353,18 @@ async function evStock(){const k=kioskFor(evDraft.name).filter(x=>prod(x.product
 async function delEv(){if(!confirm('Delete this event? Kiosk orders stay in the event sheet.'))return;const id=openEv;D.events=D.events.filter(e=>String(e.id)!=String(id));openEv=null;evDraft=null;save();render();post({action:'event_delete',id},'Deleted')}
 // ---- quotation / invoice document
 let docKind='quote';
-function showDoc(kind){docKind=kind;const e0=curEv();if(!e0)return;const e=evIn(e0);const s=S(),T=evTotals(e),isQ=kind=='quote',no=isQ?e.quoteNo:e.invoiceNo,dt=(isQ?e.quoteDate:e.invoiceDate)||today();
+function showDoc(kind){docKind=kind;const e0=curEv();if(!e0)return;const e=evIn(e0);const s=S(),T=evTotals(e),PD=num(e.paid)||(e.status=='paid'?T.total:0),isQ=kind=='quote',no=isQ?e.quoteNo:e.invoiceNo,dt=(isQ?e.quoteDate:e.invoiceDate)||today();
  const valid=new Date(dt);valid.setDate(valid.getDate()+(num(s.quoteDays)||14));
  const rows=T.L.map(l=>`<tr><td>${esc(l.product||l.desc)}</td><td class="r">${num(l.qty)}</td><td class="r">${AED(num(l.price))}</td><td class="r">${AED(num(l.qty)*num(l.price))}</td></tr>`).join('')+T.F.map(f=>`<tr><td>${esc(f.label)}</td><td class="r">1</td><td class="r">${AED(num(f.amount))}</td><td class="r">${AED(num(f.amount))}</td></tr>`).join('');
- $('#docpage').innerHTML=`<div class="dp" id="dp">${!isQ&&e.status=='paid'?'<div class="stamp">PAID</div>':''}
+ $('#docpage').innerHTML=`<div class="dp" id="dp">${!isQ&&PD>=T.total&&T.total>0?'<div class="stamp">PAID</div>':''}
 <div class="hd"><div style="display:flex;gap:16px;align-items:center"><img src="Assets/RTLHPlainLogo.jpg"><div><div class="brand">${esc(s.bizName)}</div><div style="color:#6e655b;font-size:12px;margin-top:4px">Personalised leather goods · Engraving atelier</div></div></div>
-<div class="tt"><h1>${isQ?'QUOTATION':'INVOICE'}</h1><div><b>${esc(no||'Draft')}</b></div><div>Date: ${esc(dt)}</div>${isQ?`<div>Valid until: ${valid.toLocaleDateString('en-CA')}</div>`:''}${e.terms?`<div>Terms: ${esc(e.terms)}</div>`:''}${!isQ&&dueText(e,dt)?`<div>Due: ${esc(dueText(e,dt))}</div>`:''}</div></div>
-<div class="two"><div><div class="cap">From</div><b>${esc(s.bizName)}</b><br>${esc(s.address)}<br>DED licence ${esc(s.licence)}<br>${esc(s.phone)}<br>${esc(s.email)}</div>
+<div class="tt"><h1>${isQ?'QUOTATION':'INVOICE'}</h1><div><b>${esc(no||'Draft')}</b></div><div>Date: ${esc(dt)}</div>${isQ?`<div>Valid until: ${valid.toLocaleDateString('en-CA')}</div>`:''}</div></div>
+<div class="two"><div><div class="cap">From</div><b>${esc(s.bizName)}</b><br>${esc(s.address)}<br>DED trade licence no. ${esc(s.licence)}<br>${esc(s.phone)}<br>${esc(s.email)}<br>${esc(s.web)}</div>
 <div><div class="cap">${isQ?'Prepared for':'Bill to'}</div><b>${esc(e.client||'—')}</b>${e.phone?'<br>'+esc(e.phone):''}${e.email?'<br>'+esc(e.email):''}</div>
-<div><div class="cap">Event</div><b>${esc(e.name)}</b>${e.date?'<br>'+esc(day(e.date)):''}${e.venue?'<br>'+esc(e.venue):''}${e.emirate?'<br>'+esc(e.emirate):''}</div>
-<div><div class="cap">Payment</div>${e.terms?'<b>'+esc(e.terms)+'</b><br>':''}<span style="white-space:pre-line">${esc(s.payment)}</span></div></div>
+<div><div class="cap">Event</div><b>${esc(e.name)}</b>${e.date?'<br>'+esc(day(e.date)):''}${e.venue?'<br>'+esc(e.venue):''}${e.emirate?'<br>'+esc(e.emirate):''}</div></div>
 <table><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="color:#8A7F74">No items yet</td></tr>'}</tbody></table>
-<div class="sum"><div><span>Subtotal</span><span>${AED(T.items+T.fees)}</span></div>${T.disc?`<div><span>Discount${T.pct?' ('+T.dv+'%)':''}</span><span>-${AED(T.disc)}</span></div>`:''}<div class="g"><span>Total</span><span>${AED(T.total)}</span></div>${!isQ&&e.status=='paid'?`<div style="color:#4F7A5A"><span>Paid ${esc(e.paidDate||'')}</span><span>${AED(T.total)}</span></div>`:''}</div>
-${e.notes?`<div class="ft"><div class="cap">Notes</div>${esc(e.notes)}</div>`:''}
+<div class="sum"><div><span>Subtotal</span><span>${AED(T.items+T.fees)}</span></div>${T.disc?`<div><span>Discount${T.pct?' ('+T.dv+'%)':''}</span><span>-${AED(T.disc)}</span></div>`:''}<div class="g"><span>Total</span><span>${AED(T.total)}</span></div>${!isQ&&PD>0?`<div style="color:#4F7A5A"><span>Paid ${esc(e.paidDate||'')}</span><span>${AED(PD)}</span></div>`:''}${!isQ&&PD>0&&PD<T.total?`<div style="font-weight:500"><span>Balance due</span><span>${AED(T.total-PD)}</span></div>`:''}</div>
+<div class="ft">${e.terms?`<b>Payment terms:</b> ${esc(e.terms)}${!isQ&&dueText(e,dt)?' · Due: '+esc(dueText(e,dt)):''}\n\n`:''}${e.notes?esc(e.notes)+'\n\n':''}${esc(s.payment)}</div>
 <div class="bt">${esc(s.thanks)} · ${esc(s.web)} · ${esc(s.phone)}</div></div>`;
  $('#doc').classList.add('on');fitDoc()}
 function fitDoc(){const w=$('#doc .wrap').clientWidth-24,sc=Math.min(1,w/794),p=$('#docpage');p.style.transform=`scale(${sc})`;p.style.height=(p.firstChild.offsetHeight*sc)+'px';p.style.marginBottom=-(p.firstChild.offsetHeight*(1-sc))+'px'}

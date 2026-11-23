@@ -536,6 +536,15 @@ function render(){const m=$('#main'),sc=m.scrollTop;m.innerHTML=VW[tab]();restor
  $('#tabs').innerHTML=TABS.map(([k,i,l])=>`<div class="${tab==k?'on':''}" onclick="openEv=(tab=='${k}'?null:openEv);tab='${k}';q='';render();$('#main').scrollTop=0"><b>${i}</b>${l}${k=='st'&&al?`<sup>${al}</sup>`:''}</div>`).join('')}
 window.addEventListener('resize',()=>{if($('#doc').classList.contains('on'))fitDoc()});
 render();load();setInterval(()=>{if(!document.hidden&&!$('#sheet').classList.contains('on')&&!(tab=='add')&&!(tab=='ord'&&openEv)&&!Object.keys(cart).length)load()},30000);
+// Live updates from the other phone: every 5 s ask the sheet whether anything changed, and reload only if it did.
+let lastRev=null,lastSig='',polling=false;
+const sig=t=>{let h=0;for(let i=0;i<t.length;i+=7)h=(h*31+t.charCodeAt(i))|0;return t.length+':'+h};
+async function poll(){if(polling||busy||document.hidden||!URL_)return;polling=true;
+ try{const t=await fetch(URL_+(URL_.includes('?')?'&':'?')+'rev=1',{cache:'no-store',redirect:'follow'}).then(r=>r.text());const j=JSON.parse(t);
+  if(j.rev!==undefined&&!j.orders){if(lastRev!==null&&j.rev!==lastRev)load();lastRev=j.rev}
+  else{const s=sig(t);if(lastSig&&s!==lastSig)load();lastSig=s}  // older sheet code: compare the full data instead
+ }catch(e){}finally{polling=false}}
+setInterval(poll,5000);setTimeout(poll,1500);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});flushOutbox();
 ['gesturestart','gesturechange'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
 </script></body></html>

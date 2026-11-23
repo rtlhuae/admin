@@ -115,7 +115,7 @@ const DEFSET={bizName:'RTLH',licence:'1631343',phone:'+971 58 882 2520',email:'r
  transportNear:200,transportFar:300,lowDefault:5,quoteDays:14,payment:'Payment by bank transfer or cash.',thanks:'Thank you for choosing RTLH. Made yours.'};
 let D=(()=>{try{return JSON.parse(LS.rtlh_data2)}catch(e){return null}})()||{orders:[],expenses:[],events:[],stock:[],moves:[],settings:{},kiosk:[],v:0};
 let CATL=(()=>{try{return JSON.parse(LS.rtlh_catalog)}catch(e){return null}})(),PRODUCTS=[],IMG=SITE+'/img/p/';
-let OF={},tab='ov',range=0,src='all',ls='q',sel=null,q='',edit=null,as='o',busy=false,openEv=null,stv='ov',stSel=null,cart={},stAct=null,rsMode='now',hk='all',lines=[],ordMode='items',takeStock=true,addOrders=true,qCust='';
+let qoMode='order',qoWhy='Sample / test',OF={},tab='ov',range=0,src='all',ls='q',sel=null,q='',edit=null,as='o',busy=false,openEv=null,stv='ov',stSel=null,cart={},stAct=null,rsMode='now',hk='all',lines=[],ordMode='items',takeStock=true,addOrders=true,qCust='';
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const A=v=>esc(JSON.stringify(v));
 const AED=n=>(n<0?'-':'')+'AED '+Math.round(Math.abs(n)).toLocaleString('en-US');
@@ -463,7 +463,9 @@ function mvRow(m){const neg=/sale|event_sale/.test(m.kind)||(m.kind=='adjust'&&n
 const PRESETS=[1,5,10,20,25,50,100];
 function stPick(mode){const ps=PRODUCTS.filter(p=>!(p.hidden&&!p.price&&!D.stock.some(r=>r.product==p.name)));const m=stockMap();
  const pv=stSel&&prod(stSel);
- let h=mode=='rs'?`<div class="seg"><div class="${rsMode=='now'?'on':''}" onclick="rsMode='now';render()">Arrived now</div><div class="${rsMode=='inc'?'on':''}" onclick="rsMode='inc';render()">On the way</div></div>`:'';
+ const WHY=['Sample / test','Gift','Damaged','Personal use','Other'];
+ let h=mode=='qo'?`<div class="seg"><div class="${qoMode=='order'?'on':''}" onclick="qoMode='order';render()">Order</div><div class="${qoMode=='take'?'on':''}" onclick="qoMode='take';render()">Not an order</div></div>${qoMode=='take'?`<div class="chips">${WHY.map(w=>`<div class="${qoWhy==w?'on':''}" onclick="qoWhy=${A(w)};render()">${w}</div>`).join('')}</div><div class="note" style="margin:-6px 0 10px">Only takes pieces out of stock. No order, no money, not counted as a sale.</div>`:''}`:'';
+ h+=mode=='rs'?`<div class="seg"><div class="${rsMode=='now'?'on':''}" onclick="rsMode='now';render()">Arrived now</div><div class="${rsMode=='inc'?'on':''}" onclick="rsMode='inc';render()">On the way</div></div>`:'';
  h+=`<div class="note" style="margin:-4px 0 10px">Tap a colour to add one, or type the amount below.</div>`;
  if(!pv)h+=`<div class="pg">${ps.map(p=>{const c=Object.entries(cart).filter(([k])=>k.split('|')[0]==p.name).reduce((a,[,v])=>a+v,0);return`<div class="pt" onclick="stSel=${A(p.name)};stAct=null;render();$('#main').scrollTop=0"><img src="${pimg(p)}" loading="lazy">${c?`<span class="n">${c}</span>`:''}<div>${esc(p.name)}</div>${mode=='qo'&&p.price?`<small>AED ${p.price}</small>`:''}</div>`}).join('')}</div>`;
  else{const cs=pv.colors.length?pv.colors:[{name:'',image:pv.mainImage}];
@@ -477,18 +479,18 @@ function padHtml(mode,m){const k=stAct,[p,c]=k.split('|'),r=m[k],have=r?num(r.ph
 <div class="row2" style="align-items:center"><div class="step"><div onclick="setC(${A(k)},${v-1})">−</div><input id="padq" type="number" inputmode="numeric" value="${v}" onfocus="this.select()" oninput="setC(${A(k)},this.value,true)" onchange="render()"><div onclick="setC(${A(k)},${v+1})">+</div></div><div class="btn g" style="margin:0;padding:12px;flex:0 0 80px" onclick="setC(${A(k)},0)">Clear</div></div>
 <div class="pre">${PRESETS.map(x=>`<div class="${v==x?'on':''}" onclick="setC(${A(k)},${x})">${x}</div>`).join('')}</div></div>`}
 function cartBar(mode){const n=Object.values(cart).reduce((a,v)=>a+v,0),amt=Object.entries(cart).reduce((a,[k,v])=>a+priceOf(k.split('|')[0])*v,0);
- return`<div class="cart">${mode=='qo'?`<div id="csum">${n} piece${n>1?'s':''} · ${AED(amt)}<small><span onclick="event.stopPropagation();addOrders=!addOrders;render()">${addOrders?'☑':'☐'} Also add to orders</span></small></div>`:`<div id="csum">${n} piece${n>1?'s':''}<small>${rsMode=='now'?'Add to stock now':'Mark as incoming'}</small></div>`}<div class="btn g" style="background:none;color:#fff;border-color:#4a443d" onclick="cart={};stAct=null;render()">Clear</div><div class="btn" onclick="${mode=='qo'?'confirmQo()':'confirmRs()'}">Confirm</div></div>`}
+ return`<div class="cart">${mode=='qo'&&qoMode=='take'?`<div id="csum">${n} piece${n>1?'s':''}<small>${esc(qoWhy)} · not an order</small></div>`:mode=='qo'?`<div id="csum">${n} piece${n>1?'s':''} · ${AED(amt)}<small>Added to orders</small></div>`:`<div id="csum">${n} piece${n>1?'s':''}<small>${rsMode=='now'?'Add to stock now':'Mark as incoming'}</small></div>`}<div class="btn g" style="background:none;color:#fff;border-color:#4a443d" onclick="cart={};stAct=null;render()">Clear</div><div class="btn" onclick="${mode=='qo'?'confirmQo()':'confirmRs()'}">Confirm</div></div>`}
 function setC(k,v,typing){v=Math.max(0,Math.round(num(v)));if(v)cart[k]=v;else delete cart[k];
  if(typing){const b=document.querySelector(`.n[data-k="${CSS.escape(k)}"]`);if(b)b.textContent=(stv=='rs'?'+':'')+v;const s=$('#csum');if(s){const n=Object.values(cart).reduce((a,x)=>a+x,0);s.firstChild.textContent=stv=='qo'?`${n} piece${n>1?'s':''} · ${AED(Object.entries(cart).reduce((a,[kk,x])=>a+priceOf(kk.split('|')[0])*x,0))}`:`${n} piece${n>1?'s':''}`}document.querySelectorAll('.pre div').forEach(d=>d.classList.toggle('on',d.textContent==String(v)));return}
  const sc=$('#main').scrollTop;render();$('#main').scrollTop=sc}
 function tapC(k){stAct=k;cart[k]=(cart[k]||0)+1;const sc=$('#main').scrollTop;render();$('#main').scrollTop=sc}
 async function confirmQo(){const items=Object.entries(cart),m=stockMap(),short=items.filter(([k,v])=>{const r=m[k];return(r?num(r.physical)-num(r.reserved):0)<v});
  if(short.length&&!confirm('Some colours don\'t have enough free stock. Continue anyway?'))return;
- let cust='';if(addOrders){cust=prompt('Customer name (optional)','')||'';}
- const id=String(Date.now()),moves=items.map(([k,v])=>{const[p,c]=k.split('|');return{kind:'sale',product:p,color:c,qty:v,note:cust||'Quick order',ref:id,sub:'q'+id+k}});
+ const take=qoMode=='take',addO=!take;let cust='';if(addO){cust=prompt('Customer name (optional)','')||'';}
+ const id=String(Date.now()),moves=items.map(([k,v])=>{const[p,c]=k.split('|');return take?{kind:'adjust',product:p,color:c,qty:-v,note:qoWhy,ref:id,sub:'t'+id+k}:{kind:'sale',product:p,color:c,qty:v,note:cust||'Quick order',ref:id,sub:'q'+id+k}});
  cart={};stSel=null;stAct=null;render();
- const j=await post({action:'stock_moves',moves,by:ME},'Stock updated ✓');if(j&&j.stock){D.stock=j.stock;save();render()}
- if(addOrders){const rows=moves.map((mv,i)=>({id:String(num(id)+i),date:today(),customer:cust,product:mv.product,color:mv.color,type:'Engraving',text:'',qty:mv.qty,price:priceOf(mv.product)*mv.qty,channel:'Direct',kind:moves.length>1?'multi':'',ref:moves.length>1?'o'+id:'',notes:'Quick order'}));D.orders.push(...rows);save();post(rows.length>1?{action:'orders',rows}:{action:'order',...rows[0]})}}
+ const j=await post({action:'stock_moves',moves,by:ME},take?'Taken out of stock ✓':'Stock updated ✓');if(j&&j.stock){D.stock=j.stock;save();render()}
+ if(addO){const rows=moves.map((mv,i)=>({id:String(num(id)+i),date:today(),customer:cust,product:mv.product,color:mv.color,type:'Engraving',text:'',qty:mv.qty,price:priceOf(mv.product)*mv.qty,channel:'Direct',kind:moves.length>1?'multi':'',ref:moves.length>1?'o'+id:'',notes:'Quick order'}));D.orders.push(...rows);save();post(rows.length>1?{action:'orders',rows}:{action:'order',...rows[0]})}}
 async function confirmRs(){const id=String(Date.now()),moves=Object.entries(cart).map(([k,v])=>{const[p,c]=k.split('|');return{kind:rsMode=='now'?'restock':'incoming',product:p,color:c,qty:v,sub:'r'+id+k}});
  cart={};stSel=null;stAct=null;render();const j=await post({action:'stock_moves',moves,by:ME},rsMode=='now'?'Restocked ✓':'Marked incoming ✓');if(j&&j.stock){D.stock=j.stock;save();render()}}
 function stIn(){const I=stockItems().filter(i=>i.inc>0);if(!I.length)return`<div class="empty">Nothing on the way. Use Restock → “On the way” when you order more.</div>`;

@@ -42,6 +42,8 @@ h3{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--wg);
 .hb{margin-bottom:12px}.hb .t{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:5px}.hb .t span{color:var(--wg);white-space:nowrap}.hb .tr{height:6px;background:var(--bg2);border-radius:3px}.hb .tr i{display:block;height:100%;background:var(--ch);border-radius:3px}
 .li{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--bd)}.li>div:first-child{min-width:0;flex:1}.li b{font-weight:500;font-size:15px}.li small{display:block;color:var(--wg);font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.li .a{font-family:'Cormorant Garamond',serif;font-size:20px;white-space:nowrap}
 .li.dn b{color:var(--ok)}
+.gi{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--bd)}.gi .num{flex:0 0 38px;height:38px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:var(--wg)}.gi>div:nth-child(2){flex:1;min-width:0}.gi b{font-weight:500;font-size:15px}.gi small{display:block;color:var(--wg);font-size:12px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gi .tg{flex:none;padding:9px 12px;border:1px solid var(--bd);border-radius:20px;font-size:12px;color:var(--ch)}.gi .tg.on{background:var(--ok);border-color:var(--ok);color:#fff}.gi.dn .num{background:#dbeadf;color:var(--ok)}.gi.dn b{color:var(--wg);text-decoration:line-through}
 label{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--wg);margin:14px 0 6px}
 input,select,textarea{width:100%;font:inherit;font-size:16px;padding:13px 14px;border:1px solid var(--bd);border-radius:8px;background:#fff;color:var(--ch);outline:none;-webkit-appearance:none;appearance:none}
 select{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238A7F74' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 14px center;padding-right:34px}
@@ -115,7 +117,7 @@ const DEFSET={bizName:'RTLH',licence:'1631343',phone:'+971 58 882 2520',email:'r
  transportNear:200,transportFar:300,lowDefault:5,quoteDays:14,payment:'Payment by bank transfer or cash.',thanks:'Thank you for choosing RTLH. Made yours.'};
 let D=(()=>{try{return JSON.parse(LS.rtlh_data2)}catch(e){return null}})()||{orders:[],expenses:[],events:[],stock:[],moves:[],settings:{},kiosk:[],v:0};
 let CATL=(()=>{try{return JSON.parse(LS.rtlh_catalog)}catch(e){return null}})(),PRODUCTS=[],IMG=SITE+'/img/p/';
-let qoMode='order',qoWhy='Sample / test',OF={},tab='ov',range=0,src='all',ls='q',sel=null,q='',edit=null,as='o',busy=false,openEv=null,stv='ov',stSel=null,cart={},stAct=null,rsMode='now',hk='all',lines=[],ordMode='items',takeStock=true,addOrders=true,qCust='';
+let openGrp=null,grpF='all',qoMode='order',qoWhy='Sample / test',OF={},tab='ov',range=0,src='all',ls='q',sel=null,q='',edit=null,as='o',busy=false,openEv=null,stv='ov',stSel=null,cart={},stAct=null,rsMode='now',hk='all',lines=[],ordMode='items',takeStock=true,addOrders=true,qCust='';
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const A=v=>esc(JSON.stringify(v));
 const AED=n=>(n<0?'-':'')+'AED '+Math.round(Math.abs(n)).toLocaleString('en-US');
@@ -254,10 +256,11 @@ ${true?`<h3>Events</h3><div class="card">${evT.length?evT.map(([k,v])=>`<div cla
 <h3>Spending by category</h3><div class="card">${Object.keys(ec).length?Object.entries(ec).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hb"><div class="t">${esc(k)}<span>${AED(v)}</span></div><div class="tr"><i style="width:${v/sp*100}%"></i></div></div>`).join(''):'<div class="empty" style="padding:14px">No expenses yet</div>'}</div>
 <div class="note" style="margin-top:14px">Group orders count in revenue but not in product or colour stats. Event revenue comes from confirmed or paid events.</div>`}
 function bal(){const o={Ali:0,Mamad:0};D.expenses.forEach(r=>{if((r.paidBy=='Ali'||r.paidBy=='Mamad')&&!isSet(r.settled))o[other(r.paidBy)]+=num(r.amount)/2});const n=o.Ali-o.Mamad;return n>0?`Ali owes Mamad ${AED(n)}`:n<0?`Mamad owes Ali ${AED(-n)}`:''}
-function go(t,l){tab=t;if(l)ls=l;openEv=null;sel=null;render();$('#main').scrollTop=0}
+function go(t,l){tab=t;if(l)ls=l;openEv=null;openGrp=null;sel=null;render();$('#main').scrollTop=0}
 // ============================================================ ORDERS
 function ord(){
  if(ls=='v'&&openEv)return evDetail();
+ if(openGrp&&ls!='v'&&ls!='e')return grpPage();
  const todo=groups(D.orders.filter(r=>!r.done)).length;
  const seg=`<div class="seg">${[['q','To do ('+todo+')'],['d','Done'],['v','Events'],['e','Expenses']].map(([k,l])=>`<div class="${ls==k?'on':''}" onclick="ls='${k}';sel=null;render()">${l}</div>`).join('')}</div>`;
  return`<h2>${{q:'To do',d:'Fulfilled',v:'Events',e:'Expenses'}[ls]}</h2>${seg}${ls=='e'&&bal()?`<div class="card" style="margin-bottom:12px"><b>${bal()}</b></div>`:''}${ls=='v'?needV2():''}<input id="sq" type="search" placeholder="Search…" value="${esc(q)}" oninput="q=this.value;lst()" style="margin-bottom:6px"><div id="lst">${lstHtml()}</div>`}
@@ -270,9 +273,33 @@ function lstHtml(){const t=q.trim().toLowerCase(),has=o=>!t||JSON.stringify(o).t
  G.sort((a,b)=>(done?-1:1)*(day(a[0].date).localeCompare(day(b[0].date))||num(a[0].id)-num(b[0].id)));G=G.slice(0,200);
  if(!G.length)return`<div class="empty">${t?'No matches.':done?'Nothing here yet.':'All caught up ✓'}</div>`;
  return G.map(g=>{const f=g[0],key=f.ref||f.id,open=sel==key,tot=g.reduce((a,r)=>a+num(r.price),0),grp=isGroup(f);
-  const head=`<div class="li ${done?'dn':''}" onclick="sel=sel==${A(key)}?null:${A(key)};lst()"><div><b>${esc(f.customer||'—')}${grp?' <span class="pill">Group</span>':''}</b><small>${day(f.date)}${f.channel?' · '+esc(f.channel):''}</small>${g.map(r=>`<small>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}${r.type&&r.type!='No personalisation'?' · '+esc(r.type):''}${r.text?': '+esc(r.text):''}</small>`).join('')}${f.notes?`<small>${esc(f.notes)}</small>`:''}</div><div class="a">${AED(tot)}</div></div>`;
+  if(grp&&g.length>1){const dn=g.filter(itemDone).length,pc=Math.round(dn/g.length*100),title=grpTitle(g);
+   return`<div class="li ${done?'dn':''}" onclick="openGrp=${A(key)};grpF='all';render();$('#main').scrollTop=0"><div><b>${esc(f.customer||title||'Group order')} <span class="pill">Group</span></b><small>${day(f.date)}${f.customer&&title?' · '+esc(title):''}</small><small>${g.length} items · ${dn} fulfilled</small><div style="height:5px;background:var(--bg2);border-radius:3px;margin-top:6px"><i style="display:block;height:100%;width:${pc}%;background:var(--ok);border-radius:3px"></i></div></div><div class="a">${AED(tot)}<small style="text-align:right">Open →</small></div></div>`}
+  const head=`<div class="li ${done?'dn':''}" onclick="sel=sel==${A(key)}?null:${A(key)};lst()"><div><b>${esc(f.customer||'—')}${grp?' <span class="pill">Group</span>':''}</b><small>${day(f.date)}${f.channel?' · '+esc(f.channel):''}</small>${g.map(r=>`<small>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}${r.type&&r.type!='No personalisation'?' · '+esc(r.type):''}${r.text?': '+esc(r.text):''}</small>`).join('')}${meta(f.notes).n?`<small>${esc(meta(f.notes).n)}</small>`:''}</div><div class="a">${AED(tot)}</div></div>`;
   if(!open)return head;
   return head+`<div class="acts"><div class="btn ${done?'':'ok'}" onclick="mark(${A(f.id)},${!done})">${done?'Re-open':'Fulfilled ✓'}</div>${g.map(r=>`<div class="btn g" onclick="startEdit('order',${A(r.id)})">Edit${g.length>1?' '+esc(canon(r.product)).slice(0,14):''}</div>`).join('')}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))})">Delete</div></div>`}).join('')}
+// ---- group / bulk orders: one page, numbered items, fulfil each one
+const itemDone=r=>!!r.done||!!meta(r.notes).m.done;
+const grpTitle=g=>{const n=meta(g[0].notes).n;return n.split(' · ')[0]};
+function grpRows(){return D.orders.filter(r=>(r.ref||r.id)==openGrp).sort((a,b)=>num(a.id)-num(b.id))}
+function grpPage(){const g=grpRows();if(!g.length){openGrp=null;return ord()}
+ const f=g[0],dn=g.filter(itemDone).length,tot=g.reduce((a,r)=>a+num(r.price),0),title=grpTitle(g),pc=Math.round(dn/g.length*100);
+ const L=g.map((r,i)=>({r,i})).filter(({r})=>grpF=='all'||(grpF=='todo'?!itemDone(r):itemDone(r)));
+ return`<div onclick="openGrp=null;render()" style="color:var(--wg);font-size:13px;margin-bottom:10px">← Orders</div>
+<h2 style="margin-bottom:4px">${esc(f.customer||title||'Group order')}</h2><div class="note" style="margin:0 0 14px">${day(f.date)}${f.customer&&title?' · '+esc(title):''} · ${AED(tot)}</div>
+<div class="card"><div class="hb"><div class="t"><b style="font-weight:500">${dn} of ${g.length} fulfilled</b><span>${pc}%</span></div><div class="tr"><i style="width:${pc}%;background:var(--ok)"></i></div></div></div>
+<div class="chips" style="margin-top:14px">${[['all','All ('+g.length+')'],['todo','To do ('+(g.length-dn)+')'],['done','Done ('+dn+')']].map(([k,l])=>`<div class="${grpF==k?'on':''}" onclick="grpF='${k}';render()">${l}</div>`).join('')}</div>
+${L.map(({r,i})=>{const d=itemDone(r);return`<div class="gi ${d?'dn':''}"><span class="num">#${i+1}</span><div onclick="startEdit('order',${A(r.id)})"><b>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}</b><small>${r.type&&r.type!='No personalisation'?esc(r.type):'No personalisation'}${r.text?': '+esc(r.text):''}</small></div><div class="tg ${d?'on':''}" onclick="toggleItem(${A(r.id)})">${d?'✓ Done':'Mark done'}</div></div>`}).join('')||'<div class="empty">Nothing here.</div>'}
+<div class="acts" style="margin-top:18px">${dn<g.length?`<div class="btn ok" onclick="mark(${A(f.id)},true)">Mark all fulfilled</div>`:`<div class="btn g" onclick="grpReopenAll()">Re-open all</div>`}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))});openGrp=null">Delete order</div></div>`}
+function setDoneMark(r,on){const{m,n}=meta(r.notes);delete m.done;if(on)m.done='1';r.notes=Object.entries(m).map(([k,v])=>`[[${k}:${v}]] `).join('')+n;return r.notes}
+async function toggleItem(id){const g=grpRows(),r=g.find(x=>String(x.id)==String(id));if(!r)return;const on=!itemDone(r),wasAll=g.every(itemDone);
+ const ups=[r];if(!on&&r.done)g.forEach(x=>{if(x.done){x.done=false;if(x!==r){setDoneMark(x,true);ups.push(x)}}});
+ setDoneMark(r,on);save();render();
+ for(const x of ups)post({action:'update_order',id:x.id,notes:x.notes});
+ const all=grpRows().every(itemDone);
+ if(all&&!wasAll){g.forEach(x=>x.done=true);save();render();post({action:'fulfill',id:g[0].id},'All '+g.length+' fulfilled ✓')}
+ else if(!all&&wasAll)post({action:'reopen',id:g[0].id})}
+async function grpReopenAll(){if(!confirm('Mark every item in this order as not fulfilled?'))return;const g=grpRows();g.forEach(r=>{r.done=false;setDoneMark(r,false)});save();render();for(const r of g)post({action:'update_order',id:r.id,notes:r.notes});post({action:'reopen',id:g[0].id},'Re-opened')}
 function startEdit(kind,id){const rec=(kind=='order'?D.orders:D.expenses).find(x=>String(x.id)==String(id));if(!rec)return;edit={kind,id,rec:{...rec}};as=kind=='order'?'o':'e';tab='add';render();$('#main').scrollTop=0}
 async function delOrder(ids){if(!confirm('Delete this order? This cannot be undone.'))return;D.orders=D.orders.filter(x=>!ids.includes(x.id));sel=null;save();render();
  for(const id of ids)await post({action:'delete_order',id});toast('Deleted')}
@@ -401,7 +428,7 @@ ${ordMode=='items'?`<div class="tot"><span>Total</span><b id="otot">${AED(tot)}<
 <div class="toggle ${takeStock?'on':''}" onclick="takeStock=!takeStock;this.classList.toggle('on',takeStock)"><span>Take items off stock</span><i></i></div>
 <div class="btn" onclick="submitOrder()">Save order</div>`}
 function lineHtml(l,i){const p=prod(l.product),cols=p?p.colors:[];
- return`<div class="ln">${lines.length>1?`<span class="x" onclick="lines.splice(${i},1);render()">×</span>`:''}<select style="width:calc(100% - 30px)" onchange="lnProd(${i},this.value)"><option value="">Product…</option>${sellable().map(x=>`<option ${x.name==l.product?'selected':''}>${esc(x.name)}</option>`).join('')}<option value="__other" ${l.product&&!p?'selected':''}>Other…</option></select>
+ return`<div class="ln">${ordMode=='group'||lines.length>1?`<div class="lab" style="margin:0 0 6px;color:var(--gold);font-weight:500">#${i+1}</div>`:''}${lines.length>1?`<span class="x" onclick="lines.splice(${i},1);render()">×</span>`:''}<select style="width:calc(100% - 30px)" onchange="lnProd(${i},this.value)"><option value="">Product…</option>${sellable().map(x=>`<option ${x.name==l.product?'selected':''}>${esc(x.name)}</option>`).join('')}<option value="__other" ${l.product&&!p?'selected':''}>Other…</option></select>
 ${l.product&&!p?`<input style="margin-top:6px" placeholder="What is it" value="${esc(l.product=='__other'?'':l.product)}" oninput="lines[${i}].product=this.value||'__other'">`:''}
 <div class="row2" style="margin-top:6px"><select ${cols.length?'':'disabled'} onchange="lines[${i}].color=this.value"><option value="">${cols.length?'Colour…':'No colours'}</option>${cols.map(c=>`<option ${c.name==l.color?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
 <div class="step" style="max-width:130px"><div onclick="lnQty(${i},-1)">−</div><input type="number" inputmode="numeric" value="${l.qty}" oninput="lnQty(${i},0,this.value)"><div onclick="lnQty(${i},1)">+</div></div></div>
@@ -415,7 +442,7 @@ function editOrderForm(E){const v=k=>esc(E[k]!=null?E[k]:''),p=prod(E.product);
 <label>Product</label><select id="f_product" onchange="edit.rec.product=this.value;edit.rec.color='';render()"><option value="">—</option>${sellable().map(x=>`<option ${p&&x.name==p.name?'selected':''}>${esc(x.name)}</option>`).join('')}${!p&&E.product?`<option selected>${esc(E.product)}</option>`:''}</select>
 <div class="row2"><div><label>Colour</label><select id="f_color" ${p&&p.colors.length?'':'disabled'}><option value="">—</option>${(p?p.colors:[]).map(c=>`<option ${norm(c.name)==norm(E.color)?'selected':''}>${esc(c.name)}</option>`).join('')}${E.color&&!colorOf(p,E.color)?`<option selected>${esc(E.color)}</option>`:''}</select></div><div><label>Qty</label><input id="f_qty" type="number" inputmode="numeric" value="${qty(E)}"></div></div>
 <label>Personalisation</label><select id="f_type">${optS(TYPES,E.type)}</select><label>Text</label><input id="f_text" value="${v('text')}">
-<label>Price (AED)</label><input id="f_price" type="number" inputmode="decimal" value="${v('price')}"><label>Notes</label><input id="f_notes" value="${v('notes')}">
+<label>Price (AED)</label><input id="f_price" type="number" inputmode="decimal" value="${v('price')}"><label>Notes</label><input id="f_notes" value="${esc(meta(E.notes).n)}">
 <div class="btn" onclick="submitEditOrder()">Save changes</div><div class="btn g" onclick="edit=null;tab='ord';render()">Cancel</div>`}
 const g_=id=>($('#f_'+id)||{}).value||'';
 async function submitOrder(){
@@ -431,7 +458,7 @@ async function submitOrder(){
  lines=[];OF={};ordMode='items';clearDraft('add/o');tab='ord';ls='q';render();
  await post(rows.length>1?{action:'orders',rows}:{action:'order',...rows[0]},'Saved ✓');
  if(moves.length&&V2())post({action:'stock_moves',moves,by:ME})}
-async function submitEditOrder(){const _dk=vkey();const d={action:'update_order',id:edit.id,date:g_('date'),customer:g_('customer'),product:g_('product'),color:g_('color'),qty:num(g_('qty'))||1,type:g_('type'),text:g_('text'),price:num(g_('price')),notes:g_('notes')};
+async function submitEditOrder(){const _dk=vkey();const keepDone=meta(edit.rec.notes).m.done?'[[done:1]] ':'';const d={action:'update_order',id:edit.id,date:g_('date'),customer:g_('customer'),product:g_('product'),color:g_('color'),qty:num(g_('qty'))||1,type:g_('type'),text:g_('text'),price:num(g_('price')),notes:keepDone+g_('notes')};
  const r=D.orders.find(x=>String(x.id)==String(edit.id));if(r)Object.assign(r,d,{action:undefined});clearDraft(_dk);save();ls=edit.rec.done?'d':'q';edit=null;tab='ord';render();post(d,'Saved ✓')}
 async function submitExp(){const _dk=vkey();const d={action:'expense',date:g_('date'),category:g_('category'),description:g_('description'),amount:num(g_('amount')),paidBy:g_('paidBy')=='RTLH account'?'RTLH':g_('paidBy'),settled:edit&&edit.rec.settled?isSet(edit.rec.settled):false};
  if(!d.amount)return toast('Amount needed');if(!g_('paidBy'))return toast('Who paid?');
@@ -553,7 +580,7 @@ async function saveSettings(){const _dk=vkey();const o={};Object.keys(DEFSET).fo
 // ============================================================ shell
 const TABS=[['ov','◈','Stats'],['ord','☰','Orders'],['add','+','Add'],['st','▦','Stock'],['set','⚙','Settings']],VW={ov,ord,add,st,set};
 function render(){const m=$('#main'),sc=m.scrollTop;m.innerHTML=VW[tab]();restoreDraft();saveUI();m.scrollTop=sc;const al=V2()?stockAlerts().filter(a=>a.free<=0).length:0;
- $('#tabs').innerHTML=TABS.map(([k,i,l])=>`<div class="${tab==k?'on':''}" onclick="openEv=(tab=='${k}'?null:openEv);tab='${k}';q='';render();$('#main').scrollTop=0"><b>${i}</b>${l}${k=='st'&&al?`<sup>${al}</sup>`:''}</div>`).join('')}
+ $('#tabs').innerHTML=TABS.map(([k,i,l])=>`<div class="${tab==k?'on':''}" onclick="openEv=(tab=='${k}'?null:openEv);openGrp=(tab=='${k}'?null:openGrp);tab='${k}';q='';render();$('#main').scrollTop=0"><b>${i}</b>${l}${k=='st'&&al?`<sup>${al}</sup>`:''}</div>`).join('')}
 window.addEventListener('resize',()=>{if($('#doc').classList.contains('on'))fitDoc()});
 render();load();setInterval(()=>{if(!document.hidden&&!$('#sheet').classList.contains('on')&&!(tab=='add')&&!(tab=='ord'&&openEv)&&!Object.keys(cart).length)load()},30000);
 // Live updates from the other phone: every 5 s ask the sheet whether anything changed, and reload only if it did.

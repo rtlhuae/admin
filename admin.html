@@ -290,7 +290,8 @@ function grpPage(){const g=grpRows();if(!g.length){openGrp=null;return ord()}
 <div class="card"><div class="hb"><div class="t"><b style="font-weight:500">${dn} of ${g.length} fulfilled</b><span>${pc}%</span></div><div class="tr"><i style="width:${pc}%;background:var(--ok)"></i></div></div></div>
 <div class="chips" style="margin-top:14px">${[['all','All ('+g.length+')'],['todo','To do ('+(g.length-dn)+')'],['done','Done ('+dn+')']].map(([k,l])=>`<div class="${grpF==k?'on':''}" onclick="grpF='${k}';render()">${l}</div>`).join('')}</div>
 ${L.map(({r,i})=>{const d=itemDone(r);return`<div class="gi ${d?'dn':''}"><span class="num">#${i+1}</span><div onclick="startEdit('order',${A(r.id)})"><b>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}</b><small>${r.type&&r.type!='No personalisation'?esc(r.type):'No personalisation'}${r.text?': '+esc(r.text):''}</small></div><div class="tg ${d?'on':''}" onclick="toggleItem(${A(r.id)})">${d?'✓ Done':'Mark done'}</div></div>`}).join('')||'<div class="empty">Nothing here.</div>'}
-<div class="acts" style="margin-top:18px">${dn<g.length?`<div class="btn ok" onclick="mark(${A(f.id)},true)">Mark all fulfilled</div>`:`<div class="btn g" onclick="grpReopenAll()">Re-open all</div>`}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))});openGrp=null">Delete order</div></div>`}
+<div class="btn g" style="margin-top:14px" onclick="grpAddOpen()">+ Add item</div>
+<div class="acts" style="margin-top:10px">${dn<g.length?`<div class="btn ok" onclick="mark(${A(f.id)},true)">Mark all fulfilled</div>`:`<div class="btn g" onclick="grpReopenAll()">Re-open all</div>`}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))});openGrp=null">Delete order</div></div>`}
 function setDoneMark(r,on){const{m,n}=meta(r.notes);delete m.done;if(on)m.done='1';r.notes=Object.entries(m).map(([k,v])=>`[[${k}:${v}]] `).join('')+n;return r.notes}
 async function toggleItem(id){const g=grpRows(),r=g.find(x=>String(x.id)==String(id));if(!r)return;const on=!itemDone(r),wasAll=g.every(itemDone);
  const ups=[r];if(!on&&r.done)g.forEach(x=>{if(x.done){x.done=false;if(x!==r){setDoneMark(x,true);ups.push(x)}}});
@@ -299,6 +300,26 @@ async function toggleItem(id){const g=grpRows(),r=g.find(x=>String(x.id)==String
  const all=grpRows().every(itemDone);
  if(all&&!wasAll){g.forEach(x=>x.done=true);save();render();post({action:'fulfill',id:g[0].id},'All '+g.length+' fulfilled ✓')}
  else if(!all&&wasAll)post({action:'reopen',id:g[0].id})}
+let ga=null;
+function grpAddOpen(){ga={product:'',color:'',type:'Engraving',text:'',qty:1};grpAddDraw();$('#sheet').classList.add('on')}
+function grpAddDraw(){const p=prod(ga.product),cols=p?p.colors:[],n=grpRows().length+1;
+ $('#sheetc').innerHTML=`<h2 style="font-size:26px">Add item #${n}</h2>
+<label>Product</label><select onchange="ga.product=this.value;ga.color='';const p=prod(this.value);if(p&&p.colors.length==1)ga.color=p.colors[0].name;grpAddDraw()"><option value="">Product…</option>${sellable().map(x=>`<option ${x.name==ga.product?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
+<div class="row2"><div><label>Colour</label><select ${cols.length?'':'disabled'} onchange="ga.color=this.value"><option value="">${cols.length?'Colour…':'—'}</option>${cols.map(c=>`<option ${c.name==ga.color?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div><div><label>Qty</label><input type="number" inputmode="numeric" value="${ga.qty}" oninput="ga.qty=Math.max(1,Math.round(num(this.value))||1)"></div></div>
+<label>Personalisation</label><select onchange="ga.type=this.value">${optS(TYPES,ga.type)}</select><label>Text</label><input value="${esc(ga.text)}" placeholder="Name, initials or picture no." oninput="ga.text=this.value">
+<div class="toggle ${takeStock?'on':''}" onclick="takeStock=!takeStock;this.classList.toggle('on',takeStock)"><span>Take off stock</span><i></i></div>
+<div class="btn" onclick="grpAddSave()">Add to order</div><div class="btn g" onclick="closeSheet()">Cancel</div>`}
+async function grpAddSave(){if(!ga.product)return toast('Choose a product');const g=grpRows(),f=g[0],last=g.reduce((a,r)=>Math.max(a,num(r.id)),0);
+ const row={id:String(Math.max(Date.now(),last+1)),date:f.date,customer:'',product:ga.product,color:ga.color,type:ga.type,text:ga.text,qty:ga.qty,price:0,notes:'',kind:'group',ref:f.ref,channel:f.channel||''};
+ const wasDone=g.every(itemDone);D.orders.push(row);save();closeSheet();render();
+ await post({action:'order',...row},'Item #'+(g.length+1)+' added');
+ if(wasDone)post({action:'reopen',id:f.id});
+ if(takeStock&&prod(row.product)&&(row.color||!prod(row.product).colors.length))post({action:'stock_moves',moves:[{kind:'sale',product:row.product,color:row.color,qty:row.qty,note:'Group order',ref:row.id,sub:'o'+row.id}],by:ME})}
+async function removeItem(id){if(!confirm('Remove this item from the order?'))return;const r=D.orders.find(x=>String(x.id)==String(id));D.orders=D.orders.filter(x=>x!==r);
+ // keep the order's description and total on the first item if the first one is removed
+ const rest=D.orders.filter(x=>r.ref&&x.ref==r.ref).sort((a,b)=>num(a.id)-num(b.id));
+ if(rest.length&&num(r.id)<num(rest[0].id)&&(num(r.price)||meta(r.notes).n)){const n0=rest[0];n0.price=num(n0.price)+num(r.price);n0.notes=setDoneMark({notes:meta(r.notes).n},itemDone(n0));post({action:'update_order',id:n0.id,price:n0.price,notes:n0.notes})}
+ save();edit=null;tab='ord';render();post({action:'delete_order',id},'Item removed')}
 async function grpReopenAll(){if(!confirm('Mark every item in this order as not fulfilled?'))return;const g=grpRows();g.forEach(r=>{r.done=false;setDoneMark(r,false)});save();render();for(const r of g)post({action:'update_order',id:r.id,notes:r.notes});post({action:'reopen',id:g[0].id},'Re-opened')}
 function startEdit(kind,id){const rec=(kind=='order'?D.orders:D.expenses).find(x=>String(x.id)==String(id));if(!rec)return;edit={kind,id,rec:{...rec}};as=kind=='order'?'o':'e';tab='add';render();$('#main').scrollTop=0}
 async function delOrder(ids){if(!confirm('Delete this order? This cannot be undone.'))return;D.orders=D.orders.filter(x=>!ids.includes(x.id));sel=null;save();render();
@@ -443,7 +464,7 @@ function editOrderForm(E){const v=k=>esc(E[k]!=null?E[k]:''),p=prod(E.product);
 <div class="row2"><div><label>Colour</label><select id="f_color" ${p&&p.colors.length?'':'disabled'}><option value="">—</option>${(p?p.colors:[]).map(c=>`<option ${norm(c.name)==norm(E.color)?'selected':''}>${esc(c.name)}</option>`).join('')}${E.color&&!colorOf(p,E.color)?`<option selected>${esc(E.color)}</option>`:''}</select></div><div><label>Qty</label><input id="f_qty" type="number" inputmode="numeric" value="${qty(E)}"></div></div>
 <label>Personalisation</label><select id="f_type">${optS(TYPES,E.type)}</select><label>Text</label><input id="f_text" value="${v('text')}">
 <label>Price (AED)</label><input id="f_price" type="number" inputmode="decimal" value="${v('price')}"><label>Notes</label><input id="f_notes" value="${esc(meta(E.notes).n)}">
-<div class="btn" onclick="submitEditOrder()">Save changes</div><div class="btn g" onclick="edit=null;tab='ord';render()">Cancel</div>`}
+<div class="btn" onclick="submitEditOrder()">Save changes</div>${E.ref?`<div class="btn g" style="color:var(--bad)" onclick="removeItem(${A(E.id)})">Remove this item</div>`:''}<div class="btn g" onclick="edit=null;tab='ord';render()">Cancel</div>`}
 const g_=id=>($('#f_'+id)||{}).value||'';
 async function submitOrder(){
  const L=lines.filter(l=>l.product&&l.product!='__other'),base={date:g_('date'),customer:g_('customer'),channel:g_('channel'),notes:g_('notes')},ref='o'+Date.now();
@@ -476,7 +497,8 @@ function stockMap(){const m={};D.stock.forEach(r=>m[sKey(r.product,r.color)]=r);
 // Colour renames: stock under the old name moves to the new one once (any phone can do it; it's safe to repeat).
 const RENAMES=[['The Heart Mirror','Cream','White']];
 let renaming=false;
-function renameColours(){if(!V2()||renaming||!PRODUCTS.length)return;const m=stockMap(),moves=[];
+function renameOrderColours(){RENAMES.forEach(([p,from,to])=>D.orders.filter(r=>canon(r.product)==p&&norm(r.color)==norm(from)).forEach(r=>{r.color=to;post({action:'update_order',id:r.id,color:to})}))}
+function renameColours(){if(!V2()||renaming||!PRODUCTS.length)return;renameOrderColours();const m=stockMap(),moves=[];
  RENAMES.forEach(([p,from,to])=>{const o=m[sKey(p,from)];if(!o)return;const ph=num(o.physical),inc=num(o.incoming);if(!ph&&!inc)return;const n=m[sKey(p,to)],t=Date.now();
   moves.push({kind:'count',product:p,color:to,qty:(n?num(n.physical):0)+ph,note:'Renamed '+from+' → '+to,sub:'rn-'+p+to+t},{kind:'count',product:p,color:from,qty:0,note:'Renamed '+from+' → '+to,sub:'rn0-'+p+from+t});
   if(inc)moves.push({kind:'incoming',product:p,color:to,qty:inc,note:'Renamed',sub:'rni-'+p+to+t},{kind:'cancel_incoming',product:p,color:from,qty:inc,note:'Renamed',sub:'rnc-'+p+from+t})});

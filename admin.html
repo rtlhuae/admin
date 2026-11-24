@@ -276,7 +276,7 @@ function lstHtml(){const t=q.trim().toLowerCase(),has=o=>!t||JSON.stringify(o).t
  return G.map(g=>{const f=g[0],key=f.ref||f.id,open=sel==key,tot=g.reduce((a,r)=>a+num(r.price),0),grp=isGroup(f);
   if(grp&&g.length>1){const dn=g.filter(itemDone).length,pc=Math.round(dn/g.length*100),title=grpTitle(g);
    return`<div class="li ${done?'dn':''}" onclick="openGrp=${A(key)};grpF='all';render();$('#main').scrollTop=0"><div><b>${esc(f.customer||title||'Group order')} <span class="pill">Group</span></b><small>${day(f.date)}${f.customer&&title?' · '+esc(title):''}</small><small>${g.length} items · ${dn} fulfilled</small><div style="height:5px;background:var(--bg2);border-radius:3px;margin-top:6px"><i style="display:block;height:100%;width:${pc}%;background:var(--ok);border-radius:3px"></i></div></div><div class="a">${AED(tot)}<small style="text-align:right">Open →</small></div></div>`}
-  const head=`<div class="li ${done?'dn':''}" onclick="sel=sel==${A(key)}?null:${A(key)};lst()"><div><b>${esc(f.customer||'—')}${grp?' <span class="pill">Group</span>':''}</b><small>${day(f.date)}${f.channel?' · '+esc(f.channel):''}</small>${g.map(r=>`<small>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}${r.type&&r.type!='No personalisation'?' · '+esc(r.type):''}${r.text?': '+esc(r.text):''}</small>`).join('')}${meta(f.notes).n?`<small>${esc(meta(f.notes).n)}</small>`:''}</div><div class="a">${AED(tot)}</div></div>`;
+  const head=`<div class="li ${done?'dn':''}" onclick="sel=sel==${A(key)}?null:${A(key)};lst()"><div><b>${esc(f.customer||'—')}${grp?' <span class="pill">Group</span>':''}</b><small>${day(f.date)}</small>${g.map(r=>`<small>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}${r.type&&r.type!='No personalisation'?' · '+esc(r.type):''}${r.text?': '+esc(r.text):''}</small>`).join('')}${meta(f.notes).n?`<small>${esc(meta(f.notes).n)}</small>`:''}</div><div class="a">${AED(tot)}</div></div>`;
   if(!open)return head;
   return head+`<div class="acts"><div class="btn ${done?'':'ok'}" onclick="mark(${A(f.id)},${!done})">${done?'Re-open':'Fulfilled ✓'}</div><div class="btn g" onclick="orderDoc(${A(key)})">${D.events.some(e=>evIn(e).order==key)?'Quote / invoice ›':'Quote / invoice'}</div>${g.map(r=>`<div class="btn g" onclick="startEdit('order',${A(r.id)})">Edit${g.length>1?' '+esc(canon(r.product)).slice(0,14):''}</div>`).join('')}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))})">Delete</div></div>`}).join('')}
 // ---- group / bulk orders: one page, numbered items, fulfil each one
@@ -311,7 +311,7 @@ function grpAddDraw(){const p=prod(ga.product),cols=p?p.colors:[],n=grpRows().le
 <div class="toggle ${takeStock?'on':''}" onclick="takeStock=!takeStock;this.classList.toggle('on',takeStock)"><span>Take off stock</span><i></i></div>
 <div class="btn" onclick="grpAddSave()">Add to order</div><div class="btn g" onclick="closeSheet()">Cancel</div>`}
 async function grpAddSave(){if(!ga.product)return toast('Choose a product');const g=grpRows(),f=g[0],last=g.reduce((a,r)=>Math.max(a,num(r.id)),0);
- const row={id:String(Math.max(Date.now(),last+1)),date:f.date,customer:'',product:ga.product,color:ga.color,type:ga.type,text:ga.text,qty:ga.qty,price:0,notes:'',kind:'group',ref:f.ref,channel:f.channel||''};
+ const row={id:String(Math.max(Date.now(),last+1)),date:f.date,customer:'',product:ga.product,color:ga.color,type:ga.type,text:ga.text,qty:ga.qty,price:0,notes:'',kind:'group',ref:f.ref};
  const wasDone=g.every(itemDone);D.orders.push(row);save();closeSheet();render();
  await post({action:'order',...row},'Item #'+(g.length+1)+' added');
  if(wasDone)post({action:'reopen',id:f.id});
@@ -455,7 +455,7 @@ function add(){const E=edit?edit.rec:null;
  if(E)return editOrderForm(E);
  if(!lines.length)lines=[newLine()];
  const tot=lines.reduce((a,l)=>a+num(l.price),0);
- return`<h2>Add</h2>${seg}<div class="row2"><div><label>Date</label><input id="f_date" type="date" value="${esc(OF.date||today())}" onchange="OF.date=this.value"></div><div><label>Channel</label><select id="f_channel" onchange="OF.channel=this.value">${optS(CH,OF.channel||'WhatsApp')}</select></div></div><label>Customer</label><input id="f_customer" placeholder="Name" value="${esc(OF.customer||'')}" oninput="OF.customer=this.value">
+ return`<h2>Add</h2>${seg}<label>Date</label><input id="f_date" type="date" value="${esc(OF.date||today())}" onchange="OF.date=this.value"><label>Customer</label><input id="f_customer" placeholder="Name" value="${esc(OF.customer||'')}" oninput="OF.customer=this.value">
 <div class="seg" style="margin-top:16px"><div class="${ordMode=='items'?'on':''}" onclick="ordMode='items';render()">Items</div><div class="${ordMode=='group'?'on':''}" onclick="ordMode='group';render()">Group / bulk</div></div>
 ${ordMode=='group'?`<div class="note" style="margin:-4px 0 10px">One total for the whole order (gatherings, corporate, bulk). It counts in revenue but not in product stats. Add items below only if you want them taken off stock.</div><label>What is it</label><input id="f_desc" placeholder="e.g. Majlis gathering — 40 star charms" value="${esc(OF.desc||'')}" oninput="OF.desc=this.value"><label>Total (AED)</label><input id="f_total" type="number" inputmode="decimal" placeholder="0" value="${esc(OF.total||'')}" oninput="OF.total=this.value">`:''}
 <h3>${ordMode=='group'?'Items (optional)':'Items'}</h3>${lines.map((l,i)=>lineHtml(l,i)).join('')}
@@ -483,7 +483,7 @@ function editOrderForm(E){const v=k=>esc(E[k]!=null?E[k]:''),p=prod(E.product);
 <div class="btn" onclick="submitEditOrder()">Save changes</div>${E.ref?`<div class="btn g" style="color:var(--bad)" onclick="removeItem(${A(E.id)})">Remove this item</div>`:''}<div class="btn g" onclick="edit=null;tab='ord';render()">Cancel</div>`}
 const g_=id=>($('#f_'+id)||{}).value||'';
 async function submitOrder(){
- const L=lines.filter(l=>l.product&&l.product!='__other'),base={date:g_('date'),customer:g_('customer'),channel:g_('channel'),notes:g_('notes')},ref='o'+Date.now();
+ const L=lines.filter(l=>l.product&&l.product!='__other'),base={date:g_('date'),customer:g_('customer'),notes:g_('notes')},ref='o'+Date.now();
  let rows;
  if(ordMode=='group'){const total=num(g_('total')),desc=g_('desc').trim();if(!total)return toast('Total needed');
   rows=L.length?L.map((l,i)=>({...base,product:l.product,color:l.color,type:l.type,text:l.text,qty:l.qty,price:i?0:total,kind:'group',notes:i?'':[desc,base.notes].filter(Boolean).join(' · ')})):[{...base,product:desc||'Group order',qty:1,price:total,kind:'group'}];}
@@ -575,7 +575,7 @@ async function confirmQo(){const items=Object.entries(cart),m=stockMap(),short=i
  const id=String(Date.now()),moves=items.map(([k,v])=>{const[p,c]=k.split('|');return take?{kind:'adjust',product:p,color:c,qty:-v,note:qoWhy,ref:id,sub:'t'+id+k}:{kind:'sale',product:p,color:c,qty:v,note:cust||'Quick order',ref:id,sub:'q'+id+k}});
  cart={};stSel=null;stAct=null;render();
  const j=await post({action:'stock_moves',moves,by:ME},take?'Taken out of stock ✓':'Stock updated ✓');if(j&&j.stock){D.stock=j.stock;save();render()}
- if(addO){const rows=moves.map((mv,i)=>({id:String(num(id)+i),date:today(),customer:cust,product:mv.product,color:mv.color,type:'Engraving',text:'',qty:mv.qty,price:priceOf(mv.product)*mv.qty,channel:'Direct',kind:moves.length>1?'multi':'',ref:moves.length>1?'o'+id:'',notes:'Quick order'}));D.orders.push(...rows);save();post(rows.length>1?{action:'orders',rows}:{action:'order',...rows[0]})}}
+ if(addO){const rows=moves.map((mv,i)=>({id:String(num(id)+i),date:today(),customer:cust,product:mv.product,color:mv.color,type:'Engraving',text:'',qty:mv.qty,price:priceOf(mv.product)*mv.qty,kind:moves.length>1?'multi':'',ref:moves.length>1?'o'+id:'',notes:'Quick order'}));D.orders.push(...rows);save();post(rows.length>1?{action:'orders',rows}:{action:'order',...rows[0]})}}
 async function confirmRs(){const id=String(Date.now()),moves=Object.entries(cart).map(([k,v])=>{const[p,c]=k.split('|');return{kind:rsMode=='now'?'restock':'incoming',product:p,color:c,qty:v,sub:'r'+id+k}});
  cart={};stSel=null;stAct=null;render();const j=await post({action:'stock_moves',moves,by:ME},rsMode=='now'?'Restocked ✓':'Marked incoming ✓');if(j&&j.stock){D.stock=j.stock;save();render()}}
 function stIn(){const I=stockItems().filter(i=>i.inc>0);if(!I.length)return`<div class="empty">Nothing on the way. Use Restock → “On the way” when you order more.</div>`;

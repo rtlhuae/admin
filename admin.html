@@ -166,6 +166,7 @@ async function load(manual){
   const res=await Promise.allSettled(jobs);const bad=res.find(r=>r.status=='rejected');
   save();
   if(bad){setLive('err','Partly offline');if(manual)toast(bad.reason.message)}else{setLive('ok','Live · '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));if(manual)toast('Updated')}
+  renameColours();
   if(!document.activeElement||!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))render();
  }catch(e){setLive('err','Offline · cached');if(manual)toast('Could not reach sheet: '+e.message)}finally{busy=false}}
 // ---- outbox: every save is kept on the phone until the sheet confirms it, so leaving the app never loses it
@@ -445,8 +446,16 @@ async function createEv(){const _dk=vkey();const name=g_('name').trim();if(!name
 // ============================================================ STOCK
 const sKey=(p,c)=>p+'|'+(c||'');
 function stockMap(){const m={};D.stock.forEach(r=>m[sKey(r.product,r.color)]=r);return m}
+// Colour renames: stock under the old name moves to the new one once (any phone can do it; it's safe to repeat).
+const RENAMES=[['The Heart Mirror','Cream','White']];
+let renaming=false;
+function renameColours(){if(!V2()||renaming||!PRODUCTS.length)return;const m=stockMap(),moves=[];
+ RENAMES.forEach(([p,from,to])=>{const o=m[sKey(p,from)];if(!o)return;const ph=num(o.physical),inc=num(o.incoming);if(!ph&&!inc)return;const n=m[sKey(p,to)],t=Date.now();
+  moves.push({kind:'count',product:p,color:to,qty:(n?num(n.physical):0)+ph,note:'Renamed '+from+' → '+to,sub:'rn-'+p+to+t},{kind:'count',product:p,color:from,qty:0,note:'Renamed '+from+' → '+to,sub:'rn0-'+p+from+t});
+  if(inc)moves.push({kind:'incoming',product:p,color:to,qty:inc,note:'Renamed',sub:'rni-'+p+to+t},{kind:'cancel_incoming',product:p,color:from,qty:inc,note:'Renamed',sub:'rnc-'+p+from+t})});
+ if(!moves.length)return;renaming=true;post({action:'stock_moves',moves,by:ME},'Heart Mirror Cream is now White').then(j=>{if(j&&j.stock){D.stock=j.stock;save();render()}}).finally(()=>renaming=false)}
 function stockItems(){const m=stockMap(),out=[];PRODUCTS.forEach(p=>{const cs=p.colors.length?p.colors:[{name:'',image:p.mainImage}];cs.forEach(c=>{const r=m[sKey(p.name,c.name)];if(!r&&p.hidden&&!p.price)return;out.push({p,c,r,phys:r?num(r.physical):0,res:r?num(r.reserved):0,inc:r?num(r.incoming):0})})});
- D.stock.forEach(r=>{if(!out.some(o=>o.r===r))out.push({p:prod(r.product)||{name:r.product,colors:[],mainImage:''},c:{name:r.color,image:''},r,phys:num(r.physical),res:num(r.reserved),inc:num(r.incoming)})});return out}
+ D.stock.forEach(r=>{if(!out.some(o=>o.r===r)&&(num(r.physical)||num(r.incoming)||num(r.reserved)))out.push({p:prod(r.product)||{name:r.product,colors:[],mainImage:''},c:{name:r.color,image:''},r,phys:num(r.physical),res:num(r.reserved),inc:num(r.incoming)})});return out}
 const free=i=>i.phys-i.res;
 const limOf=i=>i.r&&i.r.low!==''&&i.r.low!=null?num(i.r.low):num(S().lowDefault)||5;
 const cimg=i=>i.c.image?IMG+i.c.image+'-480.webp':pimg(i.p);

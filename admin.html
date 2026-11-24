@@ -210,8 +210,8 @@ const qty=r=>Math.max(1,num(r.qty)||1);
 const evTotals=e=>{const L=lj(e.lines),F=lj(e.fees),items=L.reduce((a,l)=>a+num(l.qty)*num(l.price),0),fees=F.reduce((a,f)=>a+num(f.amount),0),dr=String(e.discount==null?'':e.discount).trim(),pct=/%$/.test(dr),dv=num(dr),disc=Math.round((pct?(items+fees)*dv/100:dv)*100)/100;return{L,F,items,fees,disc,pct,dv,total:items+fees-disc}};
 const TERMS=['Due on receipt','50% advance, balance on event day','100% advance before the event','Net 7 days','Net 15 days','Net 30 days'];
 function meta(n){const m={};n=String(n||'');let x;while((x=n.match(/^\[\[(\w+):(.*?)\]\]\s*/))){m[x[1]]=x[2];n=n.slice(x[0].length)}return{m,n}}
-function evIn(e){const{m,n}=meta(e.notes);return{...e,lines:lj(e.lines),fees:lj(e.fees),terms:e.terms||m.terms||'',paid:num(e.paidAmount||m.paid),notes:n,phone:showPhone(e.phone)}}
-function evOut(e){const{paid,...r}=e;return{...r,notes:(e.terms?'[[terms:'+e.terms+']] ':'')+(num(paid)?'[[paid:'+num(paid)+']] ':'')+(e.notes||''),phone:textPhone(e.phone)}}
+function evIn(e){const{m,n}=meta(e.notes);return{...e,lines:lj(e.lines),fees:lj(e.fees),terms:e.terms||m.terms||'',paid:num(e.paidAmount||m.paid),order:m.order||'',pmode:m.pmode||'',notes:n,phone:showPhone(e.phone)}}
+function evOut(e){const{paid,order,pmode,...r}=e;return{...r,notes:(order?'[[order:'+order+']] ':'')+(pmode?'[[pmode:'+pmode+']] ':'')+(e.terms?'[[terms:'+e.terms+']] ':'')+(num(paid)?'[[paid:'+num(paid)+']] ':'')+(e.notes||''),phone:textPhone(e.phone)}}
 const evPaid=e=>evIn(e).paid||(e.status=='paid'?evTotals(e).total:0);
 // Google Sheets drops a leading 0 from numbers; a leading ' keeps it as typed
 const textPhone=p=>{p=String(p||'').trim();return/^[0+]/.test(p)?"'"+p:p};
@@ -219,7 +219,8 @@ const showPhone=p=>{p=String(p||'').trim().replace(/^'/,'');return/^5\d{8}$/.tes
 function dueText(e,dt){const t=e.terms||'',d=new Date(dt),n=(t.match(/Net (\d+)/)||[])[1];
  if(n){d.setDate(d.getDate()+Number(n));return d.toLocaleDateString('en-CA')}if(/receipt/i.test(t))return dt;if(/100%/.test(t))return'Before '+(day(e.date)||'the event');if(/50%/.test(t))return'Event day'+(e.date?' ('+day(e.date)+')':'');return''}
 function lj(v){if(Array.isArray(v))return v;try{return JSON.parse(v||'[]')||[]}catch(e){return[]}}
-const evLive=e=>e.status=='confirmed'||e.status=='paid';
+const isOrderDoc=e=>/\[\[order:/.test(String(e.notes||''));
+const evLive=e=>(e.status=='confirmed'||e.status=='paid')&&!isOrderDoc(e);
 const transportFee=em=>/^(dubai|sharjah)$/i.test(String(em||'').trim())?num(S().transportNear):num(S().transportFar);
 // orders grouped (multi-item orders share a ref)
 function groups(rows){const m=new Map();rows.forEach(r=>{const k=r.ref||('id'+r.id);if(!m.has(k))m.set(k,[]);m.get(k).push(r)});return[...m.values()]}
@@ -277,7 +278,7 @@ function lstHtml(){const t=q.trim().toLowerCase(),has=o=>!t||JSON.stringify(o).t
    return`<div class="li ${done?'dn':''}" onclick="openGrp=${A(key)};grpF='all';render();$('#main').scrollTop=0"><div><b>${esc(f.customer||title||'Group order')} <span class="pill">Group</span></b><small>${day(f.date)}${f.customer&&title?' · '+esc(title):''}</small><small>${g.length} items · ${dn} fulfilled</small><div style="height:5px;background:var(--bg2);border-radius:3px;margin-top:6px"><i style="display:block;height:100%;width:${pc}%;background:var(--ok);border-radius:3px"></i></div></div><div class="a">${AED(tot)}<small style="text-align:right">Open →</small></div></div>`}
   const head=`<div class="li ${done?'dn':''}" onclick="sel=sel==${A(key)}?null:${A(key)};lst()"><div><b>${esc(f.customer||'—')}${grp?' <span class="pill">Group</span>':''}</b><small>${day(f.date)}${f.channel?' · '+esc(f.channel):''}</small>${g.map(r=>`<small>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}${r.type&&r.type!='No personalisation'?' · '+esc(r.type):''}${r.text?': '+esc(r.text):''}</small>`).join('')}${meta(f.notes).n?`<small>${esc(meta(f.notes).n)}</small>`:''}</div><div class="a">${AED(tot)}</div></div>`;
   if(!open)return head;
-  return head+`<div class="acts"><div class="btn ${done?'':'ok'}" onclick="mark(${A(f.id)},${!done})">${done?'Re-open':'Fulfilled ✓'}</div>${g.map(r=>`<div class="btn g" onclick="startEdit('order',${A(r.id)})">Edit${g.length>1?' '+esc(canon(r.product)).slice(0,14):''}</div>`).join('')}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))})">Delete</div></div>`}).join('')}
+  return head+`<div class="acts"><div class="btn ${done?'':'ok'}" onclick="mark(${A(f.id)},${!done})">${done?'Re-open':'Fulfilled ✓'}</div><div class="btn g" onclick="orderDoc(${A(key)})">${D.events.some(e=>evIn(e).order==key)?'Quote / invoice ›':'Quote / invoice'}</div>${g.map(r=>`<div class="btn g" onclick="startEdit('order',${A(r.id)})">Edit${g.length>1?' '+esc(canon(r.product)).slice(0,14):''}</div>`).join('')}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))})">Delete</div></div>`}).join('')}
 // ---- group / bulk orders: one page, numbered items, fulfil each one
 const itemDone=r=>!!r.done||!!meta(r.notes).m.done;
 const grpTitle=g=>{const n=meta(g[0].notes).n;return n.split(' · ')[0]};
@@ -290,7 +291,7 @@ function grpPage(){const g=grpRows();if(!g.length){openGrp=null;return ord()}
 <div class="card"><div class="hb"><div class="t"><b style="font-weight:500">${dn} of ${g.length} fulfilled</b><span>${pc}%</span></div><div class="tr"><i style="width:${pc}%;background:var(--ok)"></i></div></div></div>
 <div class="chips" style="margin-top:14px">${[['all','All ('+g.length+')'],['todo','To do ('+(g.length-dn)+')'],['done','Done ('+dn+')']].map(([k,l])=>`<div class="${grpF==k?'on':''}" onclick="grpF='${k}';render()">${l}</div>`).join('')}</div>
 ${L.map(({r,i})=>{const d=itemDone(r);return`<div class="gi ${d?'dn':''}"><span class="num">#${i+1}</span><div onclick="startEdit('order',${A(r.id)})"><b>${qty(r)>1?qty(r)+' × ':''}${esc(canon(r.product))}${r.color?' · '+esc(r.color):''}</b><small>${r.type&&r.type!='No personalisation'?esc(r.type):'No personalisation'}${r.text?': '+esc(r.text):''}</small></div><div class="tg ${d?'on':''}" onclick="toggleItem(${A(r.id)})">${d?'✓ Done':'Mark done'}</div></div>`}).join('')||'<div class="empty">Nothing here.</div>'}
-<div class="btn g" style="margin-top:14px" onclick="grpAddOpen()">+ Add item</div>
+<div class="row2" style="margin-top:14px"><div class="btn g" style="margin:0" onclick="grpAddOpen()">+ Add item</div><div class="btn g" style="margin:0" onclick="orderDoc(${A(openGrp)})">Quote / invoice</div></div>
 <div class="acts" style="margin-top:10px">${dn<g.length?`<div class="btn ok" onclick="mark(${A(f.id)},true)">Mark all fulfilled</div>`:`<div class="btn g" onclick="grpReopenAll()">Re-open all</div>`}<div class="btn g" style="color:var(--bad)" onclick="delOrder(${A(g.map(r=>r.id))});openGrp=null">Delete order</div></div>`}
 function setDoneMark(r,on){const{m,n}=meta(r.notes);delete m.done;if(on)m.done='1';r.notes=Object.entries(m).map(([k,v])=>`[[${k}:${v}]] `).join('')+n;return r.notes}
 async function toggleItem(id){const g=grpRows(),r=g.find(x=>String(x.id)==String(id));if(!r)return;const on=!itemDone(r),wasAll=g.every(itemDone);
@@ -331,7 +332,7 @@ async function settle(id,v){const r=D.expenses.find(x=>String(x.id)==String(id))
 function kioskFor(name){return D.kiosk.filter(k=>norm(k.event)==norm(name))}
 function evList(t){
  const has=o=>!t||JSON.stringify(o).toLowerCase().includes(t);
- const L=D.events.filter(has).sort((a,b)=>day(b.date).localeCompare(day(a.date)));
+ const L=D.events.filter(e=>!isOrderDoc(e)).filter(has).sort((a,b)=>day(b.date).localeCompare(day(a.date)));
  const linked=new Set(D.events.map(e=>norm(e.name)));
  const lone=[...new Set(D.kiosk.map(k=>k.event).filter(n=>n&&!linked.has(norm(n))))].filter(n=>!t||n.toLowerCase().includes(t));
  let h=L.map(e=>{const T=evTotals(e),k=kioskFor(e.name),dn=k.filter(x=>x.done).length;
@@ -339,26 +340,41 @@ function evList(t){
  if(lone.length)h+=`<h3>From the kiosk, not set up here yet</h3>`+lone.map(n=>{const k=kioskFor(n),dn=k.filter(x=>x.done).length;return`<div class="li"><div><b>${esc(n)}</b><small>${k.length} pieces · ${dn} done · ${day(k[0].date)}</small></div><div class="btn g" style="margin:0;padding:10px 12px;font-size:10px" onclick="newEventFrom(${A(n)})">Set up</div></div>`}).join('');
  return h||`<div class="empty">${t?'No matches.':'No events yet. Tap + to add one.'}</div>`}
 function newEventFrom(name){const k=kioskFor(name);as='v';tab='add';edit=null;render();$('#f_name').value=name;if(k[0])$('#f_date').value=k[0].date}
+// ---- quotations & invoices for orders (individual, multi-item, group): stored like events, linked to the order
+function orderRows(key){return D.orders.filter(r=>(r.ref||r.id)==key).sort((a,b)=>num(a.id)-num(b.id))}
+function orderLines(key,mode){const g=orderRows(key);if(!g.length)return[];const tot=g.reduce((a,r)=>a+num(r.price),0),n=g.reduce((a,r)=>a+qty(r),0);
+ if(mode=='total')return[{product:'',desc:(grpTitle(g)||'Personalised items')+' ('+n+' piece'+(n>1?'s':'')+')',qty:1,price:tot}];
+ const m=new Map();g.forEach(r=>{const p=canon(r.product),k=p;if(!m.has(k))m.set(k,{product:prod(p)?p:'',desc:prod(p)?'':p,qty:0,price:prod(p)?priceOf(p):num(r.price)/qty(r)});m.get(k).qty+=qty(r)});return[...m.values()]}
+async function orderDoc(key){const ex=D.events.find(e=>evIn(e).order==key);if(ex){ls='v';openEv=ex.id;evDraft=null;openGrp=null;render();$('#main').scrollTop=0;return}
+ const g=orderRows(key);if(!g.length)return;const f=g[0],grp=isGroup(f)||g.length>1,mode=isGroup(f)?'total':'items';
+ const e={id:String(Date.now()),name:f.customer||grpTitle(g)||'Order',client:f.customer||'',phone:'',date:day(f.date),emirate:'',venue:'',status:'confirmed',order:key,pmode:mode,lines:orderLines(key,mode),fees:[],discount:'',notes:'',terms:''};
+ D.events.push({...evOut(e),lines:JSON.stringify(e.lines),fees:'[]'});save();ls='v';openEv=e.id;evDraft=null;openGrp=null;render();$('#main').scrollTop=0;
+ const j=await post({action:'event_save',event:evOut(e)},'Ready');if(j&&j.event){const i=D.events.findIndex(x=>x.id==e.id);if(i>=0)D.events[i]=j.event;save()}}
+function pricingBlock(e){const n=orderRows(e.order).reduce((a,r)=>a+qty(r),0);
+ return`<h3>Pricing · ${n} piece${n==1?'':'s'} in the order</h3><div class="seg"><div class="${e.pmode!='total'?'on':''}" onclick="setPMode('items')">Item by item</div><div class="${e.pmode=='total'?'on':''}" onclick="setPMode('total')">One total</div></div>
+<div class="note" style="margin:-6px 0 4px">${e.pmode=='total'?'One line for the whole order, at the order total. Edit the wording or price below.':'Each product with its website price. Change any price below.'}</div>`}
+function setPMode(m){if(evDraft.lines.length&&!confirm('Replace the items below with '+(m=='total'?'one total line':'item-by-item prices')+'?'))return;evDraft.pmode=m;evDraft.lines=orderLines(evDraft.order,m);render()}
 function curEv(){return D.events.find(e=>String(e.id)==String(openEv))}
 let evDraft=null;
 function evDetail(){const e0=curEv();if(!e0){openEv=null;return ord()}
  if(!evDraft||evDraft.id!=e0.id)evDraft=JSON.parse(JSON.stringify(evIn(e0)));
  const e=evDraft,T=evTotals(e),k=kioskFor(e.name),kg={};k.forEach(x=>{const key=x.product+(x.color?' · '+x.color:'');kg[key]=kg[key]||{n:0,d:0};kg[key].n++;if(x.done)kg[key].d++});
  const pOpts=sel=>`<option value="">Custom item…</option><option value="__assorted">Assorted items (guest's choice)</option>`+sellable().map(p=>`<option ${p.name==sel?'selected':''}>${esc(p.name)}</option>`).join('');
- return`<div onclick="openEv=null;evDraft=null;render()" style="color:var(--wg);font-size:13px;margin-bottom:10px">← Events</div>
+ const OD=!!e.order;
+ return`<div onclick="${OD?`openEv=null;evDraft=null;ls='q';openGrp=${A(e.order)};if(!D.orders.some(r=>r.ref==${A(e.order)}))openGrp=null;render()`:'openEv=null;evDraft=null;render()'}" style="color:var(--wg);font-size:13px;margin-bottom:10px">← ${OD?'Back to order':'Events'}</div>
 <h2 style="margin-bottom:6px">${esc(e.name)}</h2><div class="note" style="margin:0 0 12px">${esc(e.client||'')}${e.phone?' · <a style="color:var(--gold)" href="https://wa.me/'+esc(String(e.phone).replace(/\D/g,'').replace(/^0/,'971'))+'">'+esc(e.phone)+'</a>':''}</div>
 <div class="seg">${EVST.map(([v,l])=>`<div class="${(e.status||'quote')==v?'on':''}" onclick="evDraft.status='${v}';render()">${l}</div>`).join('')}</div>
 <div class="row2"><div><label>Date</label><input type="date" value="${esc(day(e.date))}" onchange="evDraft.date=this.value"></div><div><label>Emirate</label><select onchange="setEmirate(this.value)"><option value="">—</option>${EMIRATES.map(x=>`<option ${x==e.emirate?'selected':''}>${x}</option>`).join('')}</select></div></div>
 <label>Venue</label><input value="${esc(e.venue)}" placeholder="Venue or address" oninput="evDraft.venue=this.value">
 <div class="row2"><div><label>Client</label><input value="${esc(e.client)}" oninput="evDraft.client=this.value"></div><div><label>Phone</label><input inputmode="tel" value="${esc(e.phone)}" oninput="evDraft.phone=this.value"></div></div>
 <label>Client email</label><input type="email" value="${esc(e.email)}" oninput="evDraft.email=this.value" autocapitalize="off">
-<h3>Kiosk · ${k.length} pieces</h3>${k.length?`<div class="card">${Object.entries(kg).sort((a,b)=>b[1].n-a[1].n).map(([n,v])=>`<div class="hb"><div class="t">${esc(n)}<span>${v.n}${v.d?` · <span class="pos">${v.d} done</span>`:''}</span></div></div>`).join('')}</div>
+${OD?pricingBlock(e):`<h3>Kiosk · ${k.length} pieces</h3>${k.length?`<div class="card">${Object.entries(kg).sort((a,b)=>b[1].n-a[1].n).map(([n,v])=>`<div class="hb"><div class="t">${esc(n)}<span>${v.n}${v.d?` · <span class="pos">${v.d} done</span>`:''}</span></div></div>`).join('')}</div>
 <div class="acts" style="margin-top:10px"><div class="btn g" onclick="useKiosk()">Use kiosk items for the invoice</div>${isSet(e.stockDone)?`<div class="btn g off">Taken from stock ✓</div>`:`<div class="btn g" onclick="evStock()">Take from stock</div>`}</div>`:`<div class="note">Nothing from the kiosk yet. Guests' picks appear here when the kiosk event name is “${esc(e.name)}”.</div>`}
-<h3>Items</h3>${e.lines.map((l,i)=>`<div class="ln"><span class="x" onclick="evDraft.lines.splice(${i},1);render()">×</span><select style="width:calc(100% - 30px)" onchange="evLineProd(${i},this.value)">${pOpts(l.product)}</select>${l.product?'':`<input style="margin-top:6px" placeholder="Description" value="${esc(l.desc)}" oninput="evDraft.lines[${i}].desc=this.value">`}
+`}<h3>Items</h3>${e.lines.map((l,i)=>`<div class="ln"><span class="x" onclick="evDraft.lines.splice(${i},1);render()">×</span><select style="width:calc(100% - 30px)" onchange="evLineProd(${i},this.value)">${pOpts(l.product)}</select>${l.product?'':`<input style="margin-top:6px" placeholder="Description" value="${esc(l.desc)}" oninput="evDraft.lines[${i}].desc=this.value">`}
 <div class="row2" style="margin-top:6px"><div><div class="lab">Qty</div><input type="number" inputmode="numeric" value="${esc(l.qty)}" oninput="evDraft.lines[${i}].qty=num(this.value);evTot()"></div><div><div class="lab">Unit AED</div><input type="number" inputmode="decimal" value="${esc(l.price)}" oninput="evDraft.lines[${i}].price=num(this.value);evTot()"></div></div></div>`).join('')}
 <div class="row2"><div class="btn g" style="margin-top:4px" onclick="evDraft.lines.push({product:'',desc:'',qty:1,price:0});render()">+ Add item</div><div class="btn g" style="margin-top:4px" onclick="evDraft.lines.push({product:'',desc:ASSORTED,qty:20,price:0});render()">+ Assorted items</div></div><div class="note" style="margin-top:6px">Assorted items: one line for the whole order when guests choose on the day — just set how many and the price each. You can edit the wording.</div>
 <h3>Fees</h3>${e.fees.map((f,i)=>`<div class="ln"><span class="x" onclick="evDraft.fees.splice(${i},1);render()">×</span><div class="row2" style="padding-right:26px"><input placeholder="Fee" value="${esc(f.label)}" oninput="evDraft.fees[${i}].label=this.value"><input style="max-width:110px" type="number" inputmode="decimal" value="${esc(f.amount)}" oninput="evDraft.fees[${i}].amount=num(this.value);evTot()"></div></div>`).join('')}
-<div class="row2"><div class="btn g" style="margin-top:4px" onclick="addTransport()">+ Booth transport</div><div class="btn g" style="margin-top:4px" onclick="evDraft.fees.push({label:'',amount:0});render()">+ Other fee</div></div>
+<div class="row2">${OD?'':`<div class="btn g" style="margin-top:4px" onclick="addTransport()">+ Booth transport</div>`}<div class="btn g" style="margin-top:4px" onclick="evDraft.fees.push({label:'',amount:0});render()">+ Other fee</div></div>
 <label>Discount (only shows on the quotation and invoice when added)</label><div class="row2"><input id="discv" type="number" inputmode="decimal" placeholder="None" value="${num(e.discount)||''}" oninput="setDisc(this.value)"><div class="seg" style="margin:0;flex:0 0 130px">${[['AED','AED'],['%','%']].map(([m,l])=>`<div class="${(/%$/.test(String(e.discount||''))?'%':'AED')==m?'on':''}" onclick="discMode('${m}')">${l}</div>`).join('')}</div></div>
 <div id="evtot">${evTotHtml(T)}</div>
 <label>Payment terms</label><select onchange="evDraft.terms=this.value"><option value="">Not shown</option>${TERMS.map(t=>`<option ${t==e.terms?'selected':''}>${t}</option>`).join('')}</select>
@@ -410,7 +426,7 @@ function showDoc(kind){docKind=kind;const e0=curEv();if(!e0)return;const e=evIn(
 <div class="tt"><h1>${isQ?'QUOTATION':'INVOICE'}</h1><div><b>${esc(no||'Draft')}</b></div><div>Date: ${esc(dt)}</div>${isQ?`<div>Valid until: ${valid.toLocaleDateString('en-CA')}</div>`:''}</div></div>
 <div class="two"><div><div class="cap">From</div><b>${esc(s.bizName)}</b><br>${esc(s.address)}<br>DED trade licence no. ${esc(s.licence)}<br>${esc(s.phone)}<br>${esc(s.email)}<br>${esc(s.web)}</div>
 <div><div class="cap">${isQ?'Prepared for':'Bill to'}</div><b>${esc(e.client||'—')}</b>${e.phone?'<br>'+esc(e.phone):''}${e.email?'<br>'+esc(e.email):''}</div>
-<div><div class="cap">Event</div><b>${esc(e.name)}</b>${e.date?'<br>'+esc(day(e.date)):''}${e.venue?'<br>'+esc(e.venue):''}${e.emirate?'<br>'+esc(e.emirate):''}</div></div>
+<div><div class="cap">${e.order?'Order':'Event'}</div><b>${esc(e.name)}</b>${e.date?'<br>'+esc(day(e.date)):''}${e.venue?'<br>'+esc(e.venue):''}${e.emirate?'<br>'+esc(e.emirate):''}</div></div>
 <table><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="color:#8A7F74">No items yet</td></tr>'}</tbody></table>
 <div class="sum"><div><span>Subtotal</span><span>${AED(T.items+T.fees)}</span></div>${T.disc?`<div><span>Discount${T.pct?' ('+T.dv+'%)':''}</span><span>-${AED(T.disc)}</span></div>`:''}<div class="g"><span>Total</span><span>${AED(T.total)}</span></div>${!isQ&&PD>0?`<div style="color:#4F7A5A"><span>Paid ${esc(e.paidDate||'')}</span><span>${AED(PD)}</span></div>`:''}${!isQ&&PD>0&&PD<T.total?`<div style="font-weight:500"><span>Balance due</span><span>${AED(T.total-PD)}</span></div>`:''}</div>
 <div class="ft">${e.terms?`<b>Payment terms:</b> ${esc(e.terms)}${!isQ&&dueText(e,dt)?' · Due: '+esc(dueText(e,dt)):''}\n\n`:''}${e.notes?esc(e.notes)+'\n\n':''}${esc(s.payment)}</div>
